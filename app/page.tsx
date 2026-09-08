@@ -31,6 +31,7 @@ type Article = {
   link?: string | null;
   snippet?: string | null;
   content?: string | null;
+  imageUrl?: string | null;
   author?: string | null;
   publishedAt?: string | null;
   isRead: boolean;
@@ -642,6 +643,16 @@ export default function Home() {
                 >
                   ← Back to stories
                 </button>
+                {selectedArticle.imageUrl && (
+                  <figure className="article-banner mb-8">
+                    <img
+                      src={selectedArticle.imageUrl}
+                      alt={selectedArticle.title}
+                      className="h-full w-full object-cover"
+                      loading="lazy"
+                    />
+                  </figure>
+                )}
                 <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-[#787774]">
                   {selectedArticle.feedTitle}
                 </p>

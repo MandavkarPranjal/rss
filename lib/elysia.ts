@@ -19,6 +19,7 @@ async function ingestItems(
   userId: string,
   feedId: string,
   items: Awaited<ReturnType<typeof fetchFeed>>["items"],
+  updateExistingContent = false,
 ) {
   const values = items.slice(0, 100).map((item) => ({
     id: newId("art"),
@@ -36,12 +37,24 @@ async function ingestItems(
   if (values.length === 0) return 0;
   // Single bulk upsert — deduped by (feed_id, guid) unique index instead of
   // one SELECT per item (was 100+ roundtrips per refresh on neon-http).
-  const inserted = await db
-    .insert(article)
-    .values(values)
-    .onConflictDoNothing({ target: [article.feedId, article.guid] })
-    .returning({ id: article.id });
-  return inserted.length;
+  const query = db.insert(article).values(values);
+  const result = updateExistingContent
+    ? await query
+        .onConflictDoUpdate({
+          target: [article.feedId, article.guid],
+          // A successful full-text extraction is normally much larger than
+          // the RSS summary. Never replace an existing full article with a
+          // shorter fallback when the source site is temporarily unavailable.
+          set: {
+            content: sql`CASE WHEN length(coalesce(excluded.content, '')) > length(coalesce(${article.content}, '')) THEN excluded.content ELSE ${article.content} END`,
+            imageUrl: sql`coalesce(excluded.image_url, ${article.imageUrl})`,
+          },
+        })
+        .returning({ id: article.id })
+    : await query
+        .onConflictDoNothing({ target: [article.feedId, article.guid] })
+        .returning({ id: article.id });
+  return result.length;
 }
 
 export const rssApi = new Elysia({ prefix: "/api/rss" })
@@ -111,7 +124,7 @@ export const rssApi = new Elysia({ prefix: "/api/rss" })
       .limit(1);
     if (!f) return Response.json({ error: "Feed not found" }, { status: 404 });
     const parsed = await fetchFeed(f.url);
-    const inserted = await ingestItems(user.id, f.id, parsed.items);
+    const inserted = await ingestItems(user.id, f.id, parsed.items, true);
     await db
       .update(feed)
       .set({ lastFetchedAt: new Date(), title: parsed.title })

@@ -134,6 +134,39 @@ body {
 }
 
 /* Reader typography — editorial, calm */
+.article-banner {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  aspect-ratio: 1.91 / 1;
+  margin-left: -0.5rem;
+  margin-right: -0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #e8e7e3;
+  box-shadow: 0 12px 30px rgba(38, 37, 34, 0.08);
+}
+.article-banner::after {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 58%, rgba(25, 25, 24, 0.14));
+  content: "";
+  pointer-events: none;
+}
+@media (min-width: 640px) {
+  .article-banner {
+    margin-left: 0;
+    margin-right: 0;
+  }
+}
+@media (prefers-color-scheme: dark) {
+  .article-banner {
+    border-color: rgba(255, 255, 255, 0.1);
+    background: #292826;
+    box-shadow: 0 16px 34px rgba(0, 0, 0, 0.22);
+  }
+}
+
 .reader-body {
   color: var(--ink-soft);
   font-size: 1.02rem;
