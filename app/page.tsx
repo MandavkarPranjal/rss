@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   ArrowSquareOut,
   Checks,
-  Keyhole,
+  GearSix,
   MagnifyingGlass,
   Newspaper,
   Plus,
@@ -14,6 +14,7 @@ import {
   Trash,
 } from "@phosphor-icons/react";
 import { authClient, useSession } from "@/lib/auth-client";
+import SettingsModal from "@/components/settings-modal";
 
 type Feed = {
   id: string;
@@ -69,6 +70,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [mobileView, setMobileView] = useState<"feeds" | "list" | "reader">("list");
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -318,14 +320,9 @@ export default function Home() {
     loadFeeds();
   };
 
-  const addPasskey = async () => {
-    const { error } = await authClient.passkey.addPasskey();
-    if (error) setError(error.message ?? "Could not add passkey");
-    else alert("Passkey added — you can now sign in with it.");
-  };
-
   return (
     <div className="flex h-screen flex-col bg-[#FBFBFA] text-[#111111] dark:bg-[#191918] dark:text-[#ECECEA]">
+      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       {/* Top bar — 64px, single line, blurred paper */}
       <header className="flex h-16 shrink-0 items-center gap-3 border-b border-[#EAEAEA] bg-white/85 px-4 backdrop-blur dark:border-white/10 dark:bg-[#201F1E]/85 sm:px-5">
         <button
@@ -365,11 +362,11 @@ export default function Home() {
         <div className="ml-auto flex items-center gap-2 text-sm md:ml-0">
           <span className="hidden max-w-40 truncate text-[13px] text-[#787774] xl:inline">{session.user.email}</span>
           <button
-            onClick={addPasskey}
-            title="Add a passkey to this account"
-            className="hidden items-center gap-1.5 rounded-[6px] border border-[#EAEAEA] px-2.5 py-1.5 text-[13px] transition hover:bg-[#F7F6F3] active:scale-[0.98] sm:inline-flex dark:border-white/10 dark:hover:bg-white/5"
+            onClick={() => setSettingsOpen(true)}
+            title="Account settings"
+            className="inline-flex items-center gap-1.5 rounded-[6px] border border-[#EAEAEA] px-2.5 py-1.5 text-[13px] transition hover:bg-[#F7F6F3] active:scale-[0.98] dark:border-white/10 dark:hover:bg-white/5"
           >
-            <Keyhole size={14} weight="bold" /> Passkey
+            <GearSix size={14} weight="bold" /> <span className="hidden sm:inline">Settings</span>
           </button>
           <button
             onClick={async () => { await authClient.signOut(); router.replace("/sign-in"); }}

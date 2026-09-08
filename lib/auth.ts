@@ -32,6 +32,12 @@ export const auth = betterAuth({
     }),
     nextCookies(),
   ],
+  user: {
+    changeEmail: {
+      enabled: true,
+      updateEmailWithoutVerification: true,
+    },
+  },
   session: {
     expiresIn: 60 * 60 * 24 * 7, // 7 days
   },
