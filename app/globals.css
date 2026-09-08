@@ -1,26 +1,220 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-geist-sans), "Helvetica Neue", "Switzer", system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), "SF Mono", "JetBrains Mono", monospace;
+  --font-serif: var(--font-newsreader), "Lyon Text", Georgia, serif;
+}
+
+:root {
+  --background: #fbfbfa;
+  --foreground: #111111;
+  --paper: #ffffff;
+  --bone: #f7f6f3;
+  --ink: #111111;
+  --ink-soft: #2f3437;
+  --muted: #787774;
+  --line: #eaeaea;
+  --line-strong: #e0ded9;
+  /* spot pastels */
+  --pastel-red-bg: #fdebec;
+  --pastel-red-tx: #9f2f2d;
+  --pastel-blue-bg: #e1f3fe;
+  --pastel-blue-tx: #1f6c9f;
+  --pastel-green-bg: #edf3ec;
+  --pastel-green-tx: #346538;
+  --pastel-yellow-bg: #fbf3db;
+  --pastel-yellow-tx: #956400;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #191918;
+    --foreground: #ececea;
+    --paper: #201f1e;
+    --bone: #232220;
+    --ink: #ececea;
+    --ink-soft: #d6d3cb;
+    --muted: #9b9893;
+    --line: rgba(255, 255, 255, 0.09);
+    --line-strong: rgba(255, 255, 255, 0.14);
+    --pastel-red-bg: rgba(159, 47, 45, 0.22);
+    --pastel-red-tx: #f3b8b6;
+    --pastel-blue-bg: rgba(31, 108, 159, 0.24);
+    --pastel-blue-tx: #a8d4f0;
+    --pastel-green-bg: rgba(52, 101, 56, 0.26);
+    --pastel-green-tx: #b3d0b4;
+    --pastel-yellow-bg: rgba(149, 100, 0, 0.26);
+    --pastel-yellow-tx: #e8c26a;
   }
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+  line-height: 1.6;
+  font-feature-settings: "ss01", "cv05", "cv11";
+}
+
+/* Editorial serif helper */
+.font-editorial {
+  font-family: var(--font-serif);
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+}
+
+/* Quiet scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: 4px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Scroll entry — IntersectionObserver adds .is-visible */
+.reveal {
+  opacity: 0;
+  transform: translateY(12px);
+  transition:
+    opacity 600ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 600ms cubic-bezier(0.16, 1, 0.3, 1);
+  transition-delay: calc(var(--index, 0) * 80ms);
+}
+.reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
+/* Article list row hover — ultra-subtle lift */
+.row-lift {
+  transition:
+    background-color 200ms ease,
+    box-shadow 200ms ease;
+}
+.row-lift:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+/* Ambient hero wash for reader empty state */
+.ambient-wash {
+  background-image:
+    radial-gradient(560px 260px at 20% 0%, rgba(31, 108, 159, 0.05), transparent 70%),
+    radial-gradient(520px 280px at 85% 20%, rgba(149, 100, 0, 0.05), transparent 70%);
+}
+@media (prefers-color-scheme: dark) {
+  .ambient-wash {
+    background-image:
+      radial-gradient(560px 260px at 20% 0%, rgba(168, 212, 240, 0.07), transparent 70%),
+      radial-gradient(520px 280px at 85% 20%, rgba(232, 194, 106, 0.06), transparent 70%);
+  }
+}
+
+/* Reader typography — editorial, calm */
+.reader-body {
+  color: var(--ink-soft);
+  font-size: 1.02rem;
+  line-height: 1.75;
+}
+.reader-body p {
+  margin: 1.1em 0;
+}
+.reader-body h1,
+.reader-body h2,
+.reader-body h3 {
+  font-family: var(--font-serif);
+  color: var(--ink);
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  margin: 1.6em 0 0.5em;
+}
+.reader-body h2 {
+  font-size: 1.5rem;
+}
+.reader-body h3 {
+  font-size: 1.25rem;
+}
+.reader-body a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 3px;
+}
+.reader-body a:hover {
+  text-decoration-color: var(--ink);
+}
+.reader-body img {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  margin: 1.5em auto;
+}
+.reader-body blockquote {
+  border-left: 2px solid var(--line-strong);
+  padding-left: 1rem;
+  margin: 1.5em 0;
+  color: var(--muted);
+  font-family: var(--font-serif);
+  font-size: 1.15rem;
+  line-height: 1.5;
+}
+.reader-body pre,
+.reader-body code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+}
+.reader-body pre {
+  background: var(--bone);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 1rem;
+  overflow-x: auto;
+}
+.reader-body :not(pre) > code {
+  background: var(--pastel-yellow-bg);
+  color: var(--ink);
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+}
+
+/* kbd micro-UI */
+kbd {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--bone);
+  padding: 1px 5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* Focus visibility — calm, accessible */
+:where(a, button, input):focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
