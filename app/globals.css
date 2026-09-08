@@ -5,7 +5,7 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans), "Helvetica Neue", "Switzer", system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), "SF Mono", "JetBrains Mono", monospace;
-  --font-serif: var(--font-newsreader), "Lyon Text", Georgia, serif;
+  --font-display: var(--font-display), var(--font-geist-sans), system-ui, sans-serif;
 }
 
 :root {
@@ -64,11 +64,11 @@ body {
   font-feature-settings: "ss01", "cv05", "cv11";
 }
 
-/* Editorial serif helper */
+/* Dev-blog display helper (headings, logo) */
 .font-editorial {
-  font-family: var(--font-serif);
-  letter-spacing: -0.025em;
-  line-height: 1.1;
+  font-family: var(--font-display);
+  letter-spacing: -0.03em;
+  line-height: 1.05;
 }
 
 /* Quiet scrollbars */
@@ -145,10 +145,10 @@ body {
 .reader-body h1,
 .reader-body h2,
 .reader-body h3 {
-  font-family: var(--font-serif);
+  font-family: var(--font-display);
   color: var(--ink);
-  letter-spacing: -0.02em;
-  line-height: 1.2;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
   margin: 1.6em 0 0.5em;
 }
 .reader-body h2 {
@@ -176,9 +176,8 @@ body {
   padding-left: 1rem;
   margin: 1.5em 0;
   color: var(--muted);
-  font-family: var(--font-serif);
-  font-size: 1.15rem;
-  line-height: 1.5;
+  font-size: 1.05rem;
+  line-height: 1.6;
 }
 .reader-body pre,
 .reader-body code {

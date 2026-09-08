@@ -64,16 +64,14 @@ export const rssApi = new Elysia({ prefix: "/api/rss" })
       .from(feed)
       .where(eq(feed.userId, user.id))
       .orderBy(desc(feed.createdAt));
-    const withCounts = await Promise.all(
-      feeds.map(async (f) => {
-        const [{ count }] = await db
-          .select({ count: sql<number>`count(*)::int` })
-          .from(article)
-          .where(and(eq(article.feedId, f.id), eq(article.isRead, false)));
-        return { ...f, unreadCount: count };
-      }),
-    );
-    return withCounts;
+    // Single GROUP BY instead of one count query per feed (N+1).
+    const counts = await db
+      .select({ feedId: article.feedId, count: sql<number>`count(*)::int` })
+      .from(article)
+      .where(and(eq(article.userId, user.id), eq(article.isRead, false)))
+      .groupBy(article.feedId);
+    const byFeed = new Map(counts.map((c) => [c.feedId, c.count]));
+    return feeds.map((f) => ({ ...f, unreadCount: byFeed.get(f.id) ?? 0 }));
   })
 
   .post(

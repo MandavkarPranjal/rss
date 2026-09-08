@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowSquareOut,
@@ -61,7 +61,6 @@ export default function Home() {
   const router = useRouter();
   const { data: session, isPending } = useSession();
   const [feeds, setFeeds] = useState<Feed[]>([]);
-  const [articles, setArticles] = useState<Article[]>([]);
   const [selectedFeed, setSelectedFeed] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "unread" | "starred">("unread");
   const [search, setSearch] = useState("");
@@ -72,22 +71,51 @@ export default function Home() {
   const [mobileView, setMobileView] = useState<"feeds" | "list" | "reader">("list");
   const searchRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  // Stale-while-revalidate cache keyed by (feed, filter, query) so filter
+  // tabs render instantly on revisit. Derived during render — no extra fetch
+  // state, no loading flash.
+  const [articlesCache, setArticlesCache] = useState<Record<string, Article[]>>({});
+  const articlesCacheRef = useRef<Record<string, Article[]>>({});
+  // Bumped to revalidate the current key in the background (cache stays visible).
+  const [refreshTick, setRefreshTick] = useState(0);
+  // Rows only animate the first time they're seen — tab switches stay instant.
+  const [seenIds, setSeenIds] = useState<Set<string>>(new Set());
+
+  const articlesKey = `${selectedFeed ?? "all"}|${filter}|${debouncedSearch}`;
+  const articles = useMemo(
+    () => articlesCache[articlesKey] ?? [],
+    [articlesCache, articlesKey],
+  );
+  // Loading is derived: only true when we have nothing to show for this key.
+  const articlesLoading = !!session && articlesCache[articlesKey] === undefined;
 
   useEffect(() => {
     if (!isPending && !session) router.replace("/sign-in");
   }, [isPending, session, router]);
 
-  // Gentle staggered entry for article rows — IntersectionObserver only
+  // Gentle staggered entry for new article rows only.
   useEffect(() => {
     const root = listRef.current;
     if (!root) return;
-    const els = root.querySelectorAll(".reveal");
+    const els = root.querySelectorAll(".reveal:not(.is-visible)");
     const io = new IntersectionObserver(
       (entries) => entries.forEach((e) => e.isIntersecting && e.target.classList.add("is-visible")),
       { threshold: 0.05 },
     );
     els.forEach((el) => io.observe(el));
-    return () => io.disconnect();
+    // Immediately reveal anything already in view (no perceived loading).
+    const raf = requestAnimationFrame(() => {
+      els.forEach((el) => {
+        if ((el as HTMLElement).getBoundingClientRect().top < window.innerHeight) {
+          el.classList.add("is-visible");
+        }
+      });
+    });
+    return () => {
+      cancelAnimationFrame(raf);
+      io.disconnect();
+    };
   }, [articles]);
 
   // Cmd+K focuses search, no scroll listeners
@@ -102,32 +130,88 @@ export default function Home() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const loadFeeds = async () => {
-    try {
-      setFeeds(await api("/api/rss/feeds"));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load feeds");
-    }
-  };
-
-  const loadArticles = async () => {
-    try {
-      const params = new URLSearchParams({ filter, limit: "100" });
-      if (selectedFeed) params.set("feedId", selectedFeed);
-      if (search.trim()) params.set("q", search.trim());
-      setArticles(await api(`/api/rss/articles?${params}`));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load articles");
-    }
-  };
-
+  // Debounce typing into search so we don't refetch on every keystroke.
   useEffect(() => {
-    if (session) {
-      loadFeeds();
-      loadArticles();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session, selectedFeed, filter]);
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 350);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // Keep a ref mirror so fetch callbacks can check for cached data without
+  // adding the cache itself as an effect dependency.
+  useEffect(() => {
+    articlesCacheRef.current = articlesCache;
+  }, [articlesCache]);
+
+  const markSeen = (rows: Article[]) => {
+    setSeenIds((prev) => {
+      let changed = false;
+      const next = new Set(prev);
+      for (const a of rows) {
+        if (!next.has(a.id)) {
+          next.add(a.id);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  };
+
+  const patchCachedArticle = (id: string, patch: Partial<Article>) => {
+    setArticlesCache((prev) => {
+      let changed = false;
+      const next: Record<string, Article[]> = {};
+      for (const [k, list] of Object.entries(prev)) {
+        if (!list.some((x) => x.id === id)) {
+          next[k] = list;
+          continue;
+        }
+        changed = true;
+        next[k] = list.map((x) => (x.id === id ? { ...x, ...patch } : x));
+      }
+      return changed ? next : prev;
+    });
+  };
+
+  const loadFeeds = () => {
+    api("/api/rss/feeds")
+      .then((data) => setFeeds(data))
+      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load feeds"));
+  };
+
+  // Feeds load once per session — never on filter switches (counts update
+  // optimistically on read actions instead).
+  useEffect(() => {
+    if (session) loadFeeds();
+  }, [session]);
+
+  // Articles: fetch per key; cached tabs render instantly while we revalidate
+  // quietly underneath. All state writes happen in callbacks (no cascading renders).
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+    const params = new URLSearchParams({ filter, limit: "100" });
+    if (selectedFeed) params.set("feedId", selectedFeed);
+    if (debouncedSearch) params.set("q", debouncedSearch);
+    const key = `${selectedFeed ?? "all"}|${filter}|${debouncedSearch}`;
+    api(`/api/rss/articles?${params}`)
+      .then((data) => {
+        if (cancelled) return;
+        markSeen(data);
+        setArticlesCache((prev) => ({ ...prev, [key]: data }));
+      })
+      .catch((e) => {
+        // Only surface errors when there's nothing cached to show.
+        if (!cancelled && articlesCacheRef.current[key] === undefined) {
+          setError(e instanceof Error ? e.message : "Failed to load articles");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [session, selectedFeed, filter, debouncedSearch, refreshTick]);
+
+  // Revalidate the current key in the background; cached list stays visible.
+  const revalidateCurrentArticles = () => setRefreshTick((t) => t + 1);
 
   if (isPending || !session) {
     return (
@@ -148,8 +232,9 @@ export default function Home() {
     try {
       await api("/api/rss/feeds", { method: "POST", body: JSON.stringify({ url: newUrl }) });
       setNewUrl("");
-      await loadFeeds();
-      await loadArticles();
+      setArticlesCache({});
+      loadFeeds();
+      revalidateCurrentArticles();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to add feed");
     } finally {
@@ -161,27 +246,52 @@ export default function Home() {
     setSelectedArticle(a);
     setMobileView("reader");
     if (!a.isRead) {
-      setArticles((prev) => prev.map((x) => (x.id === a.id ? { ...x, isRead: true } : x)));
+      patchCachedArticle(a.id, { isRead: true });
+      // Optimistic unread-count decrement — no feeds refetch while reading.
+      setFeeds((prev) =>
+        prev.map((f) =>
+          f.id === a.feedId ? { ...f, unreadCount: Math.max(0, (f.unreadCount ?? 1) - 1) } : f,
+        ),
+      );
       try {
         await api(`/api/rss/articles/${a.id}`, { method: "PATCH", body: JSON.stringify({ isRead: true }) });
-        loadFeeds();
       } catch { /* ignore */ }
     }
   };
 
   const toggleStar = async (a: Article) => {
     const next = !a.isStarred;
-    setArticles((prev) => prev.map((x) => (x.id === a.id ? { ...x, isStarred: next } : x)));
+    patchCachedArticle(a.id, { isStarred: next });
     if (selectedArticle?.id === a.id) setSelectedArticle({ ...a, isStarred: next });
-    await api(`/api/rss/articles/${a.id}`, { method: "PATCH", body: JSON.stringify({ isStarred: next }) });
+    try {
+      await api(`/api/rss/articles/${a.id}`, { method: "PATCH", body: JSON.stringify({ isStarred: next }) });
+    } catch { /* ignore */ }
   };
 
   const markAllRead = async () => {
-    await api("/api/rss/articles/mark-all-read", {
-      method: "POST",
-      body: JSON.stringify(selectedFeed ? { feedId: selectedFeed } : {}),
+    const scopeFeed = selectedFeed;
+    // Optimistic: everything in scope reads as read immediately.
+    setArticlesCache((prev) => {
+      const next: Record<string, Article[]> = {};
+      for (const [k, list] of Object.entries(prev)) {
+        next[k] = list.map((x) =>
+          !scopeFeed || x.feedId === scopeFeed ? { ...x, isRead: true } : x,
+        );
+      }
+      return next;
     });
-    loadArticles();
+    setFeeds((prev) =>
+      prev.map((f) => (!scopeFeed || f.id === scopeFeed ? { ...f, unreadCount: 0 } : f)),
+    );
+    try {
+      await api("/api/rss/articles/mark-all-read", {
+        method: "POST",
+        body: JSON.stringify(scopeFeed ? { feedId: scopeFeed } : {}),
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to mark all read");
+    }
+    revalidateCurrentArticles();
     loadFeeds();
   };
 
@@ -190,8 +300,9 @@ export default function Home() {
     setLoading(true);
     try {
       await api(`/api/rss/feeds/${selectedFeed}/refresh`, { method: "POST" });
-      await loadArticles();
-      await loadFeeds();
+      setArticlesCache({});
+      revalidateCurrentArticles();
+      loadFeeds();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Refresh failed");
     } finally {
@@ -203,8 +314,8 @@ export default function Home() {
     if (!selectedFeed || !confirm("Remove this feed and its articles?")) return;
     await api(`/api/rss/feeds/${selectedFeed}`, { method: "DELETE" });
     setSelectedFeed(null);
+    setArticlesCache({});
     loadFeeds();
-    loadArticles();
   };
 
   const addPasskey = async () => {
@@ -239,7 +350,9 @@ export default function Home() {
             ref={searchRef}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && loadArticles()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") setDebouncedSearch(search.trim());
+            }}
             placeholder="Search articles"
             aria-label="Search articles"
             className="w-full rounded-[6px] border border-[#EAEAEA] bg-[#F7F6F3] py-2 pr-14 pl-9 text-sm outline-none placeholder:text-[#787774] focus:border-[#111111] focus:bg-white dark:border-white/10 dark:bg-white/5 dark:focus:bg-transparent"
@@ -274,7 +387,9 @@ export default function Home() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && loadArticles()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") setDebouncedSearch(search.trim());
+            }}
             placeholder="Search articles"
             aria-label="Search articles"
             className="w-full rounded-[6px] border border-[#EAEAEA] bg-[#F7F6F3] py-2 pr-3 pl-9 text-sm dark:border-white/10 dark:bg-white/5"
@@ -411,7 +526,9 @@ export default function Home() {
                 {filter === "starred" ? "Starred" : filter === "all" ? "Everything" : "Unread"}
               </h2>
               <p className="mt-1.5 font-mono text-[11px] uppercase tracking-[0.1em] text-[#787774]">
-                {articles.length} {articles.length === 1 ? "story" : "stories"}
+                {articlesLoading && articles.length > 0 ? "Updating…" : (
+                  <>{articles.length} {articles.length === 1 ? "story" : "stories"}</>
+                )}
                 {activeFeed ? ` · ${activeFeed.title}` : ""}
               </p>
             </div>
@@ -420,14 +537,27 @@ export default function Home() {
             </button>
           </div>
           <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto">
+            {articlesLoading && articles.length === 0 && (
+              <div aria-label="Loading stories" className="animate-pulse px-5 py-4">
+                {[0, 1, 2, 3, 4].map((i) => (
+                  <div key={i} className="border-b border-[#EAEAEA] py-4 dark:border-white/10">
+                    <div className="h-3 w-2/5 rounded bg-[#EAEAEA] dark:bg-white/10" />
+                    <div className="mt-2 h-4 w-11/12 rounded bg-[#EAEAEA] dark:bg-white/10" />
+                    <div className="mt-2 h-3 w-3/5 rounded bg-[#EAEAEA] dark:bg-white/10" />
+                  </div>
+                ))}
+              </div>
+            )}
             {articles.map((a, i) => {
               const selected = selectedArticle?.id === a.id;
+              // Only animate rows never seen before — tab switches stay instant.
+              const fresh = !seenIds.has(a.id);
               return (
                 <div
                   key={a.id}
                   onClick={() => openArticle(a)}
-                  style={{ "--index": Math.min(i, 8) } as React.CSSProperties}
-                  className={`reveal row-lift cursor-pointer border-b border-[#EAEAEA] px-5 py-4 dark:border-white/10 ${selected ? "bg-[#F7F6F3] dark:bg-white/5" : "hover:bg-[#FBFBFA] dark:hover:bg-white/[0.03]"} ${a.isRead ? "opacity-60" : ""}`}
+                  style={{ "--index": Math.min(i, 3) } as React.CSSProperties}
+                  className={`${fresh ? "reveal" : ""} row-lift cursor-pointer border-b border-[#EAEAEA] px-5 py-4 dark:border-white/10 ${selected ? "bg-[#F7F6F3] dark:bg-white/5" : "hover:bg-[#FBFBFA] dark:hover:bg-white/[0.03]"} ${a.isRead ? "opacity-60" : ""}`}
                 >
                   <div className="flex items-start gap-3">
                     {!a.isRead && <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#1F6C9F]" aria-label="Unread" />}
@@ -456,7 +586,7 @@ export default function Home() {
                 </div>
               );
             })}
-            {articles.length === 0 && (
+            {articles.length === 0 && !articlesLoading && (
               <div className="px-5 py-12 text-center">
                 <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl border border-[#EAEAEA] bg-[#F7F6F3] dark:border-white/10 dark:bg-white/5">
                   <Checks size={20} weight="bold" className="text-[#346538]" />
