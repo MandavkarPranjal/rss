@@ -81,6 +81,13 @@ export default function Home() {
   const articlesCacheRef = useRef<Record<string, Article[]>>({});
   // Bumped to revalidate the current key in the background (cache stays visible).
   const [refreshTick, setRefreshTick] = useState(0);
+  // Tick value each key was last fetched at — lets the effect skip network
+  // when the key is cached and nothing explicitly asked for a revalidate.
+  const fetchedTickRef = useRef<Record<string, number>>({});
+  const inFlightRef = useRef<Set<string>>(new Set());
+  // Stable session identity — the `session` object gets a new reference on
+  // every background get-session poll, which used to refetch everything.
+  const sessionUserId = session?.user?.id ?? null;
   // Rows only animate the first time they're seen — tab switches stay instant.
   const [seenIds, setSeenIds] = useState<Set<string>>(new Set());
 
@@ -180,21 +187,28 @@ export default function Home() {
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load feeds"));
   };
 
-  // Feeds load once per session — never on filter switches (counts update
-  // optimistically on read actions instead).
+  // Feeds load once per user — never on filter switches or background
+  // session polls (counts update optimistically on read actions instead).
   useEffect(() => {
-    if (session) loadFeeds();
-  }, [session]);
+    if (sessionUserId) loadFeeds();
+  }, [sessionUserId]);
 
-  // Articles: fetch per key; cached tabs render instantly while we revalidate
-  // quietly underneath. All state writes happen in callbacks (no cascading renders).
+  // Articles: fetch per key; cached keys skip network unless refreshTick was
+  // bumped (explicit revalidate) or the cache was cleared. All state writes
+  // happen in callbacks (no cascading renders).
   useEffect(() => {
-    if (!session) return;
+    if (!sessionUserId) return;
+    const key = `${selectedFeed ?? "all"}|${filter}|${debouncedSearch}`;
+    if (articlesCacheRef.current[key] !== undefined && fetchedTickRef.current[key] === refreshTick) {
+      return;
+    }
+    if (inFlightRef.current.has(key)) return;
+    inFlightRef.current.add(key);
     let cancelled = false;
     const params = new URLSearchParams({ filter, limit: "100" });
     if (selectedFeed) params.set("feedId", selectedFeed);
     if (debouncedSearch) params.set("q", debouncedSearch);
-    const key = `${selectedFeed ?? "all"}|${filter}|${debouncedSearch}`;
+    fetchedTickRef.current[key] = refreshTick;
     api(`/api/rss/articles?${params}`)
       .then((data) => {
         if (cancelled) return;
@@ -206,14 +220,22 @@ export default function Home() {
         if (!cancelled && articlesCacheRef.current[key] === undefined) {
           setError(e instanceof Error ? e.message : "Failed to load articles");
         }
+      })
+      .finally(() => {
+        inFlightRef.current.delete(key);
       });
     return () => {
       cancelled = true;
     };
-  }, [session, selectedFeed, filter, debouncedSearch, refreshTick]);
+  }, [sessionUserId, selectedFeed, filter, debouncedSearch, refreshTick]);
 
   // Revalidate the current key in the background; cached list stays visible.
   const revalidateCurrentArticles = () => setRefreshTick((t) => t + 1);
+  const invalidateArticlesCache = () => {
+    setArticlesCache({});
+    fetchedTickRef.current = {};
+    inFlightRef.current.clear();
+  };
 
   if (isPending || !session) {
     return (
@@ -234,7 +256,7 @@ export default function Home() {
     try {
       await api("/api/rss/feeds", { method: "POST", body: JSON.stringify({ url: newUrl }) });
       setNewUrl("");
-      setArticlesCache({});
+      invalidateArticlesCache();
       loadFeeds();
       revalidateCurrentArticles();
     } catch (e) {
@@ -247,6 +269,16 @@ export default function Home() {
   const openArticle = async (a: Article) => {
     setSelectedArticle(a);
     setMobileView("reader");
+    // List rows no longer carry `content` (payload trim) — fetch full body
+    // lazily for the opened article only.
+    if (!a.content) {
+      api(`/api/rss/articles/${a.id}`)
+        .then((full) => {
+          setSelectedArticle((prev) => (prev?.id === a.id ? { ...prev, ...full } : prev));
+          patchCachedArticle(a.id, full);
+        })
+        .catch(() => { /* list snippet stays visible */ });
+    }
     if (!a.isRead) {
       patchCachedArticle(a.id, { isRead: true });
       // Optimistic unread-count decrement — no feeds refetch while reading.
@@ -264,7 +296,9 @@ export default function Home() {
   const toggleStar = async (a: Article) => {
     const next = !a.isStarred;
     patchCachedArticle(a.id, { isStarred: next });
-    if (selectedArticle?.id === a.id) setSelectedArticle({ ...a, isStarred: next });
+    if (selectedArticle?.id === a.id) {
+      setSelectedArticle((prev) => (prev ? { ...prev, isStarred: next } : prev));
+    }
     try {
       await api(`/api/rss/articles/${a.id}`, { method: "PATCH", body: JSON.stringify({ isStarred: next }) });
     } catch { /* ignore */ }
@@ -302,7 +336,7 @@ export default function Home() {
     setLoading(true);
     try {
       await api(`/api/rss/feeds/${selectedFeed}/refresh`, { method: "POST" });
-      setArticlesCache({});
+      invalidateArticlesCache();
       revalidateCurrentArticles();
       loadFeeds();
     } catch (e) {
@@ -316,7 +350,7 @@ export default function Home() {
     if (!selectedFeed || !confirm("Remove this feed and its articles?")) return;
     await api(`/api/rss/feeds/${selectedFeed}`, { method: "DELETE" });
     setSelectedFeed(null);
-    setArticlesCache({});
+    invalidateArticlesCache();
     loadFeeds();
   };
 

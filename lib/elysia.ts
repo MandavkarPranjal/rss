@@ -20,31 +20,28 @@ async function ingestItems(
   feedId: string,
   items: Awaited<ReturnType<typeof fetchFeed>>["items"],
 ) {
-  let inserted = 0;
-  for (const item of items.slice(0, 100)) {
-    // Skip if guid already exists for this feed
-    const existing = await db
-      .select({ id: article.id })
-      .from(article)
-      .where(and(eq(article.feedId, feedId), eq(article.guid, item.guid)))
-      .limit(1);
-    if (existing.length > 0) continue;
-    await db.insert(article).values({
-      id: newId("art"),
-      feedId,
-      userId,
-      guid: item.guid,
-      title: item.title,
-      link: item.link,
-      snippet: item.snippet,
-      content: item.content,
-      author: item.author,
-      imageUrl: item.imageUrl,
-      publishedAt: item.publishedAt,
-    });
-    inserted++;
-  }
-  return inserted;
+  const values = items.slice(0, 100).map((item) => ({
+    id: newId("art"),
+    feedId,
+    userId,
+    guid: item.guid,
+    title: item.title,
+    link: item.link,
+    snippet: item.snippet,
+    content: item.content,
+    author: item.author,
+    imageUrl: item.imageUrl,
+    publishedAt: item.publishedAt,
+  }));
+  if (values.length === 0) return 0;
+  // Single bulk upsert — deduped by (feed_id, guid) unique index instead of
+  // one SELECT per item (was 100+ roundtrips per refresh on neon-http).
+  const inserted = await db
+    .insert(article)
+    .values(values)
+    .onConflictDoNothing({ target: [article.feedId, article.guid] })
+    .returning({ id: article.id });
+  return inserted.length;
 }
 
 export const rssApi = new Elysia({ prefix: "/api/rss" })
@@ -143,9 +140,7 @@ export const rssApi = new Elysia({ prefix: "/api/rss" })
         title: article.title,
         link: article.link,
         snippet: article.snippet,
-        content: article.content,
         author: article.author,
-        imageUrl: article.imageUrl,
         publishedAt: article.publishedAt,
         isRead: article.isRead,
         isStarred: article.isStarred,
@@ -159,6 +154,35 @@ export const rssApi = new Elysia({ prefix: "/api/rss" })
       .limit(limit)
       .offset(offset);
     return rows;
+  })
+
+  // Full body for one article — list endpoint omits `content` on purpose
+  // (100x full HTML payloads made every list fetch seconds slow).
+  .get("/articles/:id", async ({ request, params }) => {
+    const user = await requireUser(request);
+    const rows = await db
+      .select({
+        id: article.id,
+        feedId: article.feedId,
+        guid: article.guid,
+        title: article.title,
+        link: article.link,
+        snippet: article.snippet,
+        content: article.content,
+        author: article.author,
+        imageUrl: article.imageUrl,
+        publishedAt: article.publishedAt,
+        isRead: article.isRead,
+        isStarred: article.isStarred,
+        createdAt: article.createdAt,
+        feedTitle: feed.title,
+      })
+      .from(article)
+      .leftJoin(feed, eq(article.feedId, feed.id))
+      .where(and(eq(article.id, params.id), eq(article.userId, user.id)))
+      .limit(1);
+    if (rows.length === 0) return Response.json({ error: "Not found" }, { status: 404 });
+    return rows[0];
   })
 
   .patch(

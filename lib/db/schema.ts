@@ -4,6 +4,8 @@ import {
   timestamp,
   boolean,
   integer,
+  index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 // ---- Better Auth core tables ----
@@ -89,7 +91,9 @@ export const feed = pgTable("feed", {
   description: text("description"),
   lastFetchedAt: timestamp("last_fetched_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("feed_user_id_idx").on(t.userId),
+]);
 
 export const article = pgTable("article", {
   id: text("id").primaryKey(),
@@ -110,7 +114,15 @@ export const article = pgTable("article", {
   isRead: boolean("is_read").notNull().default(false),
   isStarred: boolean("is_starred").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  // List view: WHERE user_id + is_read/is_starred/feed_id ORDER BY published_at DESC
+  index("article_user_read_published_idx").on(t.userId, t.isRead, t.publishedAt),
+  index("article_user_feed_read_idx").on(t.userId, t.feedId, t.isRead),
+  index("article_user_starred_idx").on(t.userId, t.isStarred),
+  index("article_user_published_idx").on(t.userId, t.publishedAt),
+  // Ingest dedup check: WHERE feed_id + guid
+  uniqueIndex("article_feed_guid_uidx").on(t.feedId, t.guid),
+]);
 
 export type Feed = typeof feed.$inferSelect;
 export type Article = typeof article.$inferSelect;
