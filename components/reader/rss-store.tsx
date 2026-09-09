@@ -49,20 +49,45 @@ export function RssStoreProvider({ children }: { children: ReactNode }) {
   const fetchedTickRef = useRef<Record<string, number>>({});
   const inFlightRef = useRef<Map<string, Promise<unknown>>>(new Map());
   const articlesCacheRef = useRef(articlesCache);
+  // Current account id for stale-response guards. Updated in the
+  // sessionUserId effect below so fetch callbacks can tell whether the
+  // account changed while a request was in flight.
+  const userIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     articlesCacheRef.current = articlesCache;
   }, [articlesCache]);
 
   const loadFeeds = useCallback(() => {
+    const userId = userIdRef.current;
     api("/api/rss/feeds")
-      .then((data) => setFeeds(data))
-      .catch((e) =>
-        setFeedsError(e instanceof Error ? e.message : "Failed to load feeds"),
-      );
+      .then((data) => {
+        // The account may have changed while the request was in flight;
+        // never let the previous account's response overwrite the new list.
+        if (userIdRef.current !== userId) return;
+        setFeeds(data);
+      })
+      .catch((e) => {
+        if (userIdRef.current !== userId) return;
+        setFeedsError(e instanceof Error ? e.message : "Failed to load feeds");
+      });
   }, []);
 
   useEffect(() => {
+    if (userIdRef.current === sessionUserId) return;
+    userIdRef.current = sessionUserId;
+    // The account changed (including sign-out) while the provider stayed
+    // mounted: drop all user-scoped state so the next account never sees the
+    // previous account's feeds or articles. Bumping revalidateTick forces the
+    // article views to refetch under the new session after the cache wipe
+    // instead of sticking on a loading skeleton.
+    setFeeds([]);
+    setFeedsError("");
+    setArticlesCache({});
+    setSeenIds(new Set());
+    fetchedTickRef.current = {};
+    inFlightRef.current.clear();
+    setRevalidateTick((t) => t + 1);
     if (sessionUserId) loadFeeds();
   }, [sessionUserId, loadFeeds]);
 
