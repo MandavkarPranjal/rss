@@ -10,6 +10,7 @@ export const env = createEnv({
     PASSKEY_RP_NAME: z.string().min(1).optional(),
     PASSKEY_ORIGIN: z.url().optional(),
     TRUSTED_ORIGINS: z.string().min(1).optional(),
+    CRON_SECRET: z.string().min(1).optional(),
     NODE_ENV: z
       .enum(["development", "test", "production"])
       .default("development"),
@@ -27,6 +28,7 @@ export const env = createEnv({
     PASSKEY_RP_NAME: process.env.PASSKEY_RP_NAME,
     PASSKEY_ORIGIN: process.env.PASSKEY_ORIGIN,
     TRUSTED_ORIGINS: process.env.TRUSTED_ORIGINS,
+    CRON_SECRET: process.env.CRON_SECRET,
     NODE_ENV: process.env.NODE_ENV,
     // NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
   },

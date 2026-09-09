@@ -4,6 +4,7 @@ import { auth } from "./auth";
 import { db } from "./db";
 import { article, feed } from "./db/schema";
 import { fetchFeed } from "./rss";
+import { refreshFeed } from "./feed-refresh";
 
 async function requireUser(request: Request) {
   const session = await auth.api.getSession({ headers: request.headers });
@@ -13,48 +14,6 @@ async function requireUser(request: Request) {
 
 function newId(prefix: string) {
   return `${prefix}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
-}
-
-async function ingestItems(
-  userId: string,
-  feedId: string,
-  items: Awaited<ReturnType<typeof fetchFeed>>["items"],
-  updateExistingContent = false,
-) {
-  const values = items.slice(0, 100).map((item) => ({
-    id: newId("art"),
-    feedId,
-    userId,
-    guid: item.guid,
-    title: item.title,
-    link: item.link,
-    snippet: item.snippet,
-    content: item.content,
-    author: item.author,
-    imageUrl: item.imageUrl,
-    publishedAt: item.publishedAt,
-  }));
-  if (values.length === 0) return 0;
-  // Single bulk upsert — deduped by (feed_id, guid) unique index instead of
-  // one SELECT per item (was 100+ roundtrips per refresh on neon-http).
-  const query = db.insert(article).values(values);
-  const result = updateExistingContent
-    ? await query
-        .onConflictDoUpdate({
-          target: [article.feedId, article.guid],
-          // A successful full-text extraction is normally much larger than
-          // the RSS summary. Never replace an existing full article with a
-          // shorter fallback when the source site is temporarily unavailable.
-          set: {
-            content: sql`CASE WHEN length(coalesce(excluded.content, '')) > length(coalesce(${article.content}, '')) THEN excluded.content ELSE ${article.content} END`,
-            imageUrl: sql`coalesce(excluded.image_url, ${article.imageUrl})`,
-          },
-        })
-        .returning({ id: article.id })
-    : await query
-        .onConflictDoNothing({ target: [article.feedId, article.guid] })
-        .returning({ id: article.id });
-  return result.length;
 }
 
 export const rssApi = new Elysia({ prefix: "/api/rss" })
@@ -99,8 +58,20 @@ export const rssApi = new Elysia({ prefix: "/api/rss" })
         description: parsed.description,
         lastFetchedAt: new Date(),
       });
-      const inserted = await ingestItems(user.id, feedId, parsed.items);
-      return { id: feedId, title: parsed.title, articlesImported: inserted };
+      const inserted = await db.insert(article).values(parsed.items.slice(0, 100).map((item) => ({
+        id: newId("art"),
+        feedId,
+        userId: user.id,
+        guid: item.guid,
+        title: item.title,
+        link: item.link,
+        snippet: item.snippet,
+        content: item.content,
+        author: item.author,
+        imageUrl: item.imageUrl,
+        publishedAt: item.publishedAt,
+      }))).onConflictDoNothing({ target: [article.feedId, article.guid] }).returning({ id: article.id });
+      return { id: feedId, title: parsed.title, articlesImported: inserted.length };
     },
     { body: t.Object({ url: t.String({ minLength: 4, maxLength: 2000 }) }) },
   )
@@ -123,13 +94,8 @@ export const rssApi = new Elysia({ prefix: "/api/rss" })
       .where(and(eq(feed.id, params.id), eq(feed.userId, user.id)))
       .limit(1);
     if (!f) return Response.json({ error: "Feed not found" }, { status: 404 });
-    const parsed = await fetchFeed(f.url);
-    const inserted = await ingestItems(user.id, f.id, parsed.items, true);
-    await db
-      .update(feed)
-      .set({ lastFetchedAt: new Date(), title: parsed.title })
-      .where(eq(feed.id, f.id));
-    return { refreshed: true, newArticles: inserted };
+    const result = await refreshFeed(f.id);
+    return { refreshed: true, newArticles: result?.newArticles ?? 0 };
   })
 
   // ---- Articles ----
