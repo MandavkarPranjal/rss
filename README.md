@@ -18,13 +18,17 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 ## Scheduled feed refreshes
 
-Vercel deployments run `/api/cron/refresh` hourly using the schedule in
-`vercel.json`. Set a `CRON_SECRET` environment variable in the deployment so
-the endpoint only accepts authenticated cron requests. Each run fetches every
-saved feed and stores newly discovered entries without removing older ones.
+GitHub Actions runs `.github/workflows/refresh-feeds.yml` hourly. Add these
+repository secrets in GitHub:
 
-For non-Vercel deployments, configure the host's scheduler to make an hourly
-GET request to `/api/cron/refresh` with:
+```text
+APP_URL=https://your-app.vercel.app
+CRON_SECRET=the-same-value-configured-in-Vercel
+```
+
+The workflow calls `/api/cron/refresh`, which fetches every saved feed and
+stores newly discovered entries without removing older ones. For another
+external scheduler, make an hourly GET request to that endpoint with:
 
 ```text
 Authorization: Bearer <CRON_SECRET>
