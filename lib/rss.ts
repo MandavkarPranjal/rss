@@ -1,7 +1,7 @@
 import { Readability } from "@mozilla/readability";
 import { JSDOM } from "jsdom";
 import Parser from "rss-parser";
-import { getVideoEmbed } from "./article-embeds";
+import { getSafeIframeSrc, getSameOriginIframeUrl, getVideoEmbed } from "./article-embeds";
 
 const parser = new Parser({
   timeout: 15000,
@@ -88,24 +88,54 @@ function makeAbsoluteUrls(html: string, baseUrl: string): string {
   return document.body.innerHTML;
 }
 
-function sanitizeArticleHtml(html: string, baseUrl: string): string {
-  const dom = new JSDOM(`<body>${html}</body>`, { url: baseUrl });
+/** Link-out card for embeds browsers refuse to frame (X-Frame-Options). */
+function buildEmbedFallback(
+  document: Document,
+  url: string,
+  title: string | null,
+): HTMLDivElement {
+  const box = document.createElement("div");
+  box.setAttribute("class", "article-embed");
+  const label = document.createElement("p");
+  label.setAttribute("class", "article-embed-title");
+  label.textContent = title?.trim() || "Interactive content";
+  const link = document.createElement("a");
+  link.setAttribute("class", "article-embed-link");
+  link.setAttribute("href", url);
+  link.setAttribute("target", "_blank");
+  link.setAttribute("rel", "noreferrer");
+  link.textContent = "Open interactive content";
+  box.append(label, link);
+  return box;
+}
+
+function sanitizeArticleHtml(html: string, baseUrl: string): string {  const dom = new JSDOM(`<body>${html}</body>`, { url: baseUrl });
   const document = dom.window.document;
   for (const element of document.querySelectorAll("script, style, noscript, object, embed, form")) {
     element.remove();
   }
 
   for (const iframe of Array.from(document.querySelectorAll("iframe"))) {
-    const embed = getVideoEmbed(iframe.getAttribute("src") ?? "");
-    if (!embed) {
-      iframe.remove();
+    const rawSrc = iframe.getAttribute("src") ?? "";
+    const embed = getSafeIframeSrc(rawSrc, baseUrl);
+    if (embed) {
+      iframe.setAttribute("src", embed.src);
+      iframe.setAttribute("title", iframe.getAttribute("title") || embed.title);
+      iframe.setAttribute("loading", "lazy");
+      iframe.setAttribute("allow", "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share");
+      iframe.setAttribute("allowfullscreen", "true");
       continue;
     }
-    iframe.setAttribute("src", embed.src);
-    iframe.setAttribute("title", iframe.getAttribute("title") || embed.title);
-    iframe.setAttribute("loading", "lazy");
-    iframe.setAttribute("allow", "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share");
-    iframe.setAttribute("allowfullscreen", "true");
+    // Site-owned interactive demos (e.g. PlanetScale's relative
+    // /blog/*/iframe embeds) send `X-Frame-Options: SAMEORIGIN`, so browsers
+    // refuse to render them inside the reader. Replace with a link-out card
+    // instead of a broken frame.
+    const demoUrl = getSameOriginIframeUrl(rawSrc, baseUrl);
+    if (demoUrl) {
+      iframe.replaceWith(buildEmbedFallback(document, demoUrl, iframe.getAttribute("title")));
+      continue;
+    }
+    iframe.remove();
   }
 
   for (const anchor of Array.from(document.querySelectorAll("a[href]"))) {
