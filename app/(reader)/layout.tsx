@@ -8,6 +8,7 @@ import { RssStoreProvider } from "@/components/reader/rss-store";
 function ReaderLoading() {
   return (
     <div
+      role="status"
       aria-label="Loading reader"
       className="flex h-screen flex-col bg-[#FBFBFA] dark:bg-[#191918]"
     >

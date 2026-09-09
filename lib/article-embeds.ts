@@ -12,6 +12,7 @@ export function configureEmbedIframe(
   embed: VideoEmbed,
   title?: string | null,
 ): void {
+  frame.removeAttribute("srcdoc");
   frame.setAttribute("src", embed.src);
   frame.setAttribute("title", title || embed.title);
   frame.setAttribute("loading", "lazy");
