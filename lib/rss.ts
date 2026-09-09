@@ -93,6 +93,16 @@ function makeAbsoluteUrls(html: string, baseUrl: string): string {
 
 function sanitizeArticleHtml(html: string, baseUrl: string): string {  const dom = new JSDOM(`<body>${html}</body>`, { url: baseUrl });
   const document = dom.window.document;
+
+  document.querySelectorAll<HTMLMetaElement>('meta[itemprop="contentUrl"]').forEach((metadata) => {
+    const embed = getVideoEmbed(metadata.getAttribute("content") ?? "");
+    const player = metadata.parentElement;
+    if (!embed || !player) return;
+    const iframe = document.createElement("iframe");
+    configureEmbedIframe(iframe, embed, player.querySelector('meta[itemprop="name"]')?.getAttribute("content"));
+    player.replaceWith(iframe);
+  });
+
   for (const element of document.querySelectorAll("script, style, noscript, object, embed, form")) {
     element.remove();
   }

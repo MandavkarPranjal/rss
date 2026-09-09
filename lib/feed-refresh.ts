@@ -40,6 +40,10 @@ async function ingestItems(
                     OR strpos(excluded.content, '<pre') < strpos(${article.content}, '<pre')
                   )
                 )
+                OR (
+                  strpos(coalesce(${article.content}, ''), 'Loading the player') > 0
+                  AND strpos(coalesce(excluded.content, ''), 'content.jwplatform.com/players/') > 0
+                )
               THEN excluded.content
               ELSE ${article.content}
             END`,

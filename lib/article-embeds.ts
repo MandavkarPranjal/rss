@@ -5,6 +5,18 @@ export type VideoEmbed = {
 
 const EMBED_IFRAME_ALLOW =
   "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";
+const JW_PLAYER_HOSTS = ["content.jwplatform.com", "cdn.jwplayer.com"];
+
+function isValidJwId(value: string | null): value is string {
+  return Boolean(value && /^[a-zA-Z0-9_-]{6,}$/u.test(value));
+}
+
+function jwPlayerEmbed(mediaId: string): VideoEmbed {
+  return {
+    src: `https://content.jwplatform.com/players/${encodeURIComponent(mediaId)}.html`,
+    title: "JW Player video",
+  };
+}
 
 /** Apply the shared iframe policy to a known-safe video embed. */
 export function configureEmbedIframe(
@@ -92,6 +104,14 @@ export function getVideoEmbed(urlValue: string): VideoEmbed | undefined {
   if (isAllowedHost(url.hostname, ["twitch.tv"])) {
     const id = url.pathname.match(/\/videos\/(\d+)/u)?.[1] ?? url.searchParams.get("video") ?? undefined;
     if (id) return { src: `https://player.twitch.tv/?video=${id}&parent=${encodeURIComponent(typeof window === "undefined" ? "localhost" : window.location.hostname)}`, title: "Twitch video" };
+  }
+
+  if (isAllowedHost(url.hostname, JW_PLAYER_HOSTS)) {
+    const mediaMatch = url.pathname.match(/^\/v2\/media\/([a-zA-Z0-9_-]+)$/u);
+    if (mediaMatch && isValidJwId(mediaMatch[1])) return jwPlayerEmbed(mediaMatch[1]);
+
+    const playerMatch = url.pathname.match(/^\/players\/([a-zA-Z0-9_-]+)(?:-[a-zA-Z0-9_-]+)?\.html$/u);
+    if (playerMatch && isValidJwId(playerMatch[1])) return jwPlayerEmbed(playerMatch[1]);
   }
 
   return undefined;

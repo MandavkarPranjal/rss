@@ -13,7 +13,7 @@ export class RemoteFetchError extends Error {
 function isPrivateAddress(address: string): boolean {
   const version = isIP(address);
   if (version === 4) {
-    const [a, b] = address.split(".").map(Number);
+    const [a, b, c] = address.split(".").map(Number);
     return (
       a === 0 ||
       a === 10 ||
@@ -21,11 +21,14 @@ function isPrivateAddress(address: string): boolean {
       (a === 100 && b >= 64 && b <= 127) ||
       (a === 169 && b === 254) ||
       (a === 172 && b >= 16 && b <= 31) ||
-      (a === 192 && b === 0) ||
+      // Reserved ranges below are narrower than their first two octets.
+      // Keep this precise so public hosts such as 192.0.66.220 are allowed.
+      (a === 192 && b === 0 && c === 0) ||
+      (a === 192 && b === 0 && c === 2) ||
       (a === 192 && b === 168) ||
       (a === 198 && b >= 18 && b <= 19) ||
-      (a === 198 && b === 51) ||
-      (a === 203 && b === 0) ||
+      (a === 198 && b === 51 && c === 100) ||
+      (a === 203 && b === 0 && c === 113) ||
       a >= 224
     );
   }
