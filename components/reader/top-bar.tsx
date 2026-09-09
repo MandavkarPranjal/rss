@@ -7,7 +7,7 @@ import { GearSix, MagnifyingGlass, Newspaper, SignOut } from "@phosphor-icons/re
 import { toast } from "sonner";
 import { authClient, useSession } from "@/lib/auth-client";
 import { useRssStore } from "./rss-store";
-import { useSearchQuery } from "./use-articles";
+import { useSearchQuery, useSelectedArticleId } from "./use-articles";
 
 export default function TopBar({
   onOpenFeeds,
@@ -20,6 +20,7 @@ export default function TopBar({
   const { data: session } = useSession();
   const router = useRouter();
   const [query, setQuery] = useSearchQuery();
+  const [selectedArticleId] = useSelectedArticleId();
   const searchRef = useRef<HTMLInputElement>(null);
 
   return (
@@ -92,22 +93,24 @@ export default function TopBar({
         </div>
       </header>
 
-      <div className="border-b border-[#EAEAEA] bg-white px-4 py-2 md:hidden dark:border-white/10 dark:bg-[#201F1E]">
-        <div className="relative">
-          <MagnifyingGlass
-            size={15}
-            weight="bold"
-            className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-[#787774]"
-          />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value || null)}
-            placeholder="Search articles"
-            aria-label="Search articles"
-            className="w-full rounded-[6px] border border-[#EAEAEA] bg-[#F7F6F3] py-2 pr-3 pl-9 text-sm dark:border-white/10 dark:bg-white/5"
-          />
+      {!selectedArticleId && (
+        <div className="border-b border-[#EAEAEA] bg-white px-4 py-2 md:hidden dark:border-white/10 dark:bg-[#201F1E]">
+          <div className="relative">
+            <MagnifyingGlass
+              size={15}
+              weight="bold"
+              className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-[#787774]"
+            />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value || null)}
+              placeholder="Search articles"
+              aria-label="Search articles"
+              className="w-full rounded-[6px] border border-[#EAEAEA] bg-[#F7F6F3] py-2 pr-3 pl-9 text-sm dark:border-white/10 dark:bg-white/5"
+            />
+          </div>
         </div>
-      </div>
+      )}
     </>
   );
 }

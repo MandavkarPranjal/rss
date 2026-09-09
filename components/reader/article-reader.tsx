@@ -51,6 +51,8 @@ export default function ArticleReader({
   }, [articleId, cached]);
 
   const article = cached ?? (direct && direct.id === articleId ? direct.article : null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const fetchedFullRef = useRef<Set<string>>(new Set());
   // Keyed by article + URL so a failure hides only the current banner: when
   // the article (or its image) changes the key mismatches and the new figure
@@ -142,6 +144,37 @@ export default function ArticleReader({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once per article open
   }, [article?.id]);
 
+  useEffect(() => {
+    const scrollElement = scrollRef.current;
+    if (!scrollElement) return;
+    const contentElement = contentRef.current;
+
+    let frame = 0;
+    const updateProgress = () => {
+      frame = 0;
+      const remaining = scrollElement.scrollHeight - scrollElement.clientHeight;
+      const progress = remaining <= 0 ? 1 : scrollElement.scrollTop / remaining;
+      scrollElement.style.setProperty("--reading-progress", String(Math.min(1, Math.max(0, progress))));
+    };
+    const onScroll = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(updateProgress);
+    };
+
+    updateProgress();
+    scrollElement.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    const resizeObserver = new ResizeObserver(onScroll);
+    resizeObserver.observe(contentElement ?? scrollElement);
+
+    return () => {
+      scrollElement.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+      resizeObserver.disconnect();
+      if (frame) window.cancelAnimationFrame(frame);
+    };
+  }, [article?.id]);
+
   if (!article) {
     return (
       <div className="ambient-wash flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-8">
@@ -166,8 +199,11 @@ export default function ArticleReader({
   }
 
   return (
-    <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
-      <div className="mx-auto w-full min-w-0 max-w-2xl px-6 py-10 sm:px-10 sm:py-12 xl:max-w-3xl">
+    <div ref={scrollRef} className="article-scroll min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
+      <div aria-hidden="true" className="reading-progress-track">
+        <div className="reading-progress-fill" />
+      </div>
+      <div ref={contentRef} className="mx-auto w-full min-w-0 max-w-2xl px-6 py-10 sm:px-10 sm:py-12 xl:max-w-3xl">
         {showBack && onBack && (
           <button
             onClick={onBack}
