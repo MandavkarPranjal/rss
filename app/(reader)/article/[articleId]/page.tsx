@@ -8,7 +8,7 @@ export default function ArticlePage({ params }: { params: Promise<{ articleId: s
   const { articleId } = use(params);
 
   return (
-    <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#FBFBFA] dark:bg-[#191918]">
+    <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#FBFBFA] dark:bg-[#191918]">
       <div className="shrink-0 border-b border-[#EAEAEA] px-6 py-3 sm:px-10 dark:border-white/10">
         <Link
           href="/unread"

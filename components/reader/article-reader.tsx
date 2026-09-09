@@ -151,8 +151,8 @@ export default function ArticleReader({
   }
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto">
-      <div className="mx-auto max-w-2xl px-6 py-10 sm:px-10 sm:py-12 xl:max-w-3xl">
+    <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
+      <div className="mx-auto w-full min-w-0 max-w-2xl px-6 py-10 sm:px-10 sm:py-12 xl:max-w-3xl">
         {showBack && onBack && (
           <button
             onClick={onBack}

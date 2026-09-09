@@ -136,6 +136,10 @@ body {
 /* Reader typography — editorial, calm */
 .article-banner {
   position: relative;
+  width: 100%;
+  max-width: min(100%, calc(100vw - 2rem));
+  min-width: 0;
+  box-sizing: border-box;
   isolation: isolate;
   overflow: hidden;
   aspect-ratio: 1.91 / 1;
@@ -152,6 +156,13 @@ body {
   background: linear-gradient(180deg, transparent 58%, rgba(25, 25, 24, 0.14));
   content: "";
   pointer-events: none;
+}
+.article-banner > img {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  height: 100%;
 }
 @media (min-width: 640px) {
   .article-banner {
@@ -171,6 +182,8 @@ body {
   color: var(--ink-soft);
   font-size: 1.02rem;
   line-height: 1.75;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .reader-body p {
   margin: 1.1em 0;
@@ -200,6 +213,10 @@ body {
   text-decoration-color: var(--ink);
 }
 .reader-body img {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
   border: 1px solid var(--line);
   border-radius: 12px;
   margin: 1.5em auto;

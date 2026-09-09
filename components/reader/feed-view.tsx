@@ -21,7 +21,7 @@ export default function FeedView({
   // grow (no flex-1): ArticleList is a fixed 380px column and any extra
   // wrapper width would surface as dead space between list and reader.
   return (
-    <div className="flex min-h-0 flex-1">
+    <div className="flex min-h-0 min-w-0 flex-1">
       <div className={`${articleId ? "hidden" : "flex"} min-h-0 sm:shrink-0 md:flex`}>
         <ArticleList feedId={feedId} filter={filter} heading={heading} />
       </div>

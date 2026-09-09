@@ -125,7 +125,7 @@ export default function ReaderShell({ children }: { children: ReactNode }) {
       <div
         aria-hidden={drawerOpen || undefined}
         inert={drawerOpen || undefined}
-        className="flex min-h-0 flex-1"
+        className="flex min-h-0 min-w-0 flex-1"
       >
         <aside className="hidden w-72 shrink-0 flex-col border-r border-[#EAEAEA] bg-[#F7F6F3] lg:flex dark:border-white/10 dark:bg-[#232220]">
           <FeedSidebar />
