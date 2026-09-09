@@ -1,0 +1,205 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+import { ArrowSquareOut, Newspaper, Star } from "@phosphor-icons/react";
+import ArticleContent from "@/components/article-content";
+import { api } from "@/lib/rss-client";
+import type { Article } from "@/lib/rss-types";
+import { useRssStore } from "./rss-store";
+
+export function useCachedArticle(id: string | null): Article | null {
+  const { articlesCache } = useRssStore();
+  return useMemo(() => {
+    if (!id) return null;
+    for (const list of Object.values(articlesCache)) {
+      const found = list.find((a) => a.id === id);
+      if (found) return found;
+    }
+    return null;
+  }, [articlesCache, id]);
+}
+
+export default function ArticleReader({
+  articleId,
+  onBack,
+  showBack,
+}: {
+  articleId: string | null;
+  onBack: () => void;
+  showBack?: boolean;
+}) {
+  const cached = useCachedArticle(articleId);
+  const { patchCachedArticle, setFeeds } = useRssStore();
+  // Keyed by article id so a stale fetch for a previous article can never
+  // render under a new id — no reset effect needed.
+  const [direct, setDirect] = useState<{ id: string; article: Article } | null>(null);
+
+  // Direct-link / refresh case: article isn't in any cached list yet.
+  useEffect(() => {
+    if (!articleId || cached) return;
+    let cancelled = false;
+    api(`/api/rss/articles/${articleId}`)
+      .then((full) => {
+        if (!cancelled) setDirect({ id: articleId, article: full });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [articleId, cached]);
+
+  const article = cached ?? (direct && direct.id === articleId ? direct.article : null);
+
+  // Lazily fetch the full body for rows that only carry a snippet.
+  useEffect(() => {
+    if (!article || article.content) return;
+    let cancelled = false;
+    api(`/api/rss/articles/${article.id}`)
+      .then((full) => {
+        if (cancelled) return;
+        if (cached) patchCachedArticle(article.id, full);
+        else
+          setDirect((prev) =>
+            prev && prev.id === article.id
+              ? { id: prev.id, article: { ...prev.article, ...full } }
+              : prev,
+          );
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [article, cached, patchCachedArticle]);
+
+  const toggleStar = async () => {
+    if (!article) return;
+    const next = !article.isStarred;
+    if (cached) patchCachedArticle(article.id, { isStarred: next });
+    else
+      setDirect((prev) =>
+        prev && prev.id === article.id
+          ? { id: prev.id, article: { ...prev.article, isStarred: next } }
+          : prev,
+      );
+    try {
+      await api(`/api/rss/articles/${article.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ isStarred: next }),
+      });
+    } catch {}
+  };
+
+  // Mark read when the reader opens an unread cached row (list already did
+  // this optimistically, this is a no-op safety net for direct links).
+  useEffect(() => {
+    if (!article || article.isRead) return;
+    if (cached) patchCachedArticle(article.id, { isRead: true });
+    setFeeds((prev) =>
+      prev.map((f) =>
+        f.id === article.feedId ? { ...f, unreadCount: Math.max(0, (f.unreadCount ?? 1) - 1) } : f,
+      ),
+    );
+    api(`/api/rss/articles/${article.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ isRead: true }),
+    }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per article open
+  }, [article?.id]);
+
+  if (!article) {
+    return (
+      <div className="ambient-wash flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-8">
+        <div className="max-w-sm text-center">
+          <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-xl border border-[#EAEAEA] bg-white dark:border-white/10 dark:bg-[#201F1E]">
+            <Newspaper size={24} weight="bold" className="text-[#111111] dark:text-[#ECECEA]" />
+          </span>
+          <h2 className="font-editorial mt-5 text-[28px] leading-tight font-medium tracking-tight">
+            Pick something
+            <br />
+            worth reading.
+          </h2>
+          <p className="mx-auto mt-2 max-w-70 text-sm leading-relaxed text-[#787774]">
+            Your stories collect here. Skim the list, open one, stay a while.
+          </p>
+          <p className="mt-5 flex items-center justify-center gap-2 font-mono text-[11px] text-[#787774]">
+            <kbd>⌘K</kbd> to search
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="mx-auto max-w-2xl px-6 py-10 sm:px-10 sm:py-12 xl:max-w-3xl">
+        {showBack && (
+          <button
+            onClick={onBack}
+            className="mb-6 text-[13px] text-[#787774] underline decoration-[#EAEAEA] underline-offset-4 md:hidden"
+          >
+            ← Back to stories
+          </button>
+        )}
+        {article.imageUrl && (
+          <figure className="article-banner mb-8">
+            {/* eslint-disable-next-line @next/next/no-img-element -- feed-supplied remote image */}
+            <img src={article.imageUrl} alt={article.title} className="h-full w-full object-cover" loading="lazy" />
+          </figure>
+        )}
+        <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-[#787774]">
+          {article.feedTitle}
+        </p>
+        <h1 className="font-editorial mt-2 text-[32px] leading-[1.12] font-medium tracking-[-0.02em] text-balance sm:text-[38px]">
+          {article.title}
+        </h1>
+        <p className="mt-3 font-mono text-xs text-[#787774]">
+          {article.author ? `${article.author} · ` : ""}
+          {article.publishedAt
+            ? new Date(article.publishedAt).toLocaleString(undefined, {
+                month: "short",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+              })
+            : ""}
+        </p>
+        <div className="mt-5 flex flex-wrap items-center gap-2 border-y border-[#EAEAEA] py-3 dark:border-white/10">
+          {article.link && (
+            <a
+              href={article.link}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-[6px] bg-[#111111] px-3 py-1.5 text-[13px] font-medium text-white transition hover:bg-[#333333] active:scale-[0.98] dark:bg-[#ECECEA] dark:text-[#191918]"
+            >
+              Open original <ArrowSquareOut size={13} weight="bold" />
+            </a>
+          )}
+          <button
+            onClick={toggleStar}
+            className="inline-flex items-center gap-1.5 rounded-[6px] border border-[#EAEAEA] bg-white px-3 py-1.5 text-[13px] transition hover:bg-[#F7F6F3] active:scale-[0.98] dark:border-white/10 dark:bg-transparent dark:hover:bg-white/5"
+          >
+            <Star
+              size={13}
+              weight={article.isStarred ? "fill" : "bold"}
+              className={article.isStarred ? "text-[#956400]" : ""}
+            />
+            {article.isStarred ? "Starred" : "Star"}
+          </button>
+          {article.isStarred && (
+            <span className="rounded-full bg-[#FBF3DB] px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.05em] text-[#956400] dark:bg-[#956400]/25 dark:text-[#E8C26A]">
+              Saved
+            </span>
+          )}
+          <Link
+            href={`/article/${article.id}`}
+            className="ml-auto text-xs text-[#787774] underline decoration-[#EAEAEA] underline-offset-4 hover:text-[#111111] dark:hover:text-white"
+          >
+            Permalink
+          </Link>
+        </div>
+        <ArticleContent html={article.content ?? article.snippet ?? ""} />
+      </div>
+    </div>
+  );
+}
