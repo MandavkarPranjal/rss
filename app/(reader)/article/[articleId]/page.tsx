@@ -17,7 +17,7 @@ export default function ArticlePage({ params }: { params: Promise<{ articleId: s
           ← Back to stories
         </Link>
       </div>
-      <ArticleReader articleId={articleId} onBack={() => {}} />
+      <ArticleReader articleId={articleId} />
     </main>
   );
 }

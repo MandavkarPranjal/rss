@@ -1,14 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { parseAsStringEnum, useQueryState } from "nuqs";
 import { Checks, Plus, Trash } from "@phosphor-icons/react";
 import { api } from "@/lib/rss-client";
 import type { RssFilter } from "@/lib/rss-types";
 import { useRssStore } from "./rss-store";
-import { useSearchQuery } from "./use-articles";
+import { useSearchQuery, useSelectedArticleId } from "./use-articles";
 
 const FILTERS: RssFilter[] = ["all", "unread", "starred"];
 
@@ -18,6 +18,7 @@ function filterHref(f: RssFilter, query: string) {
 
 export default function FeedSidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
+  const router = useRouter();
   const {
     feeds,
     totalUnread,
@@ -28,6 +29,7 @@ export default function FeedSidebar({ onNavigate }: { onNavigate?: () => void })
     setFeedsError,
   } = useRssStore();
   const [query] = useSearchQuery();
+  const [, setArticleId] = useSelectedArticleId();
   const [newUrl, setNewUrl] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -99,9 +101,19 @@ export default function FeedSidebar({ onNavigate }: { onNavigate?: () => void })
 
   const removeFeed = async (feedId: string) => {
     if (!confirm("Remove this feed and its articles?")) return;
-    await api(`/api/rss/feeds/${feedId}`, { method: "DELETE" });
-    invalidateArticlesCache();
-    loadFeeds();
+    try {
+      await api(`/api/rss/feeds/${feedId}`, { method: "DELETE" });
+      invalidateArticlesCache();
+      loadFeeds();
+      // The footer only renders on /feed/:id, so without navigating the
+      // reader keeps querying the deleted feed and shows an empty view.
+      if (feedId === activeFeedId) {
+        router.replace(filterHref(effectiveFilter, query));
+        onNavigate?.();
+      }
+    } catch (e) {
+      setFeedsError(e instanceof Error ? e.message : "Failed to remove feed");
+    }
   };
 
   const activeFeed = feeds.find((f) => f.id === activeFeedId) ?? null;
@@ -139,7 +151,13 @@ export default function FeedSidebar({ onNavigate }: { onNavigate?: () => void })
                 key={f}
                 role="tab"
                 aria-selected={effectiveFilter === f}
-                onClick={() => setFeedFilter(f)}
+                onClick={() => {
+                  // Close the open reader: otherwise ?article= survives the
+                  // filter change and the old article stays open.
+                  setArticleId(null);
+                  setFeedFilter(f);
+                  onNavigate?.();
+                }}
                 className={`rounded-full px-3 py-1 text-xs font-medium uppercase tracking-[0.05em] transition active:scale-[0.98] ${
                   effectiveFilter === f
                     ? "bg-[#111111] text-white dark:bg-[#ECECEA] dark:text-[#191918]"

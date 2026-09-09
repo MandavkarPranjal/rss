@@ -1,7 +1,7 @@
 import { Readability } from "@mozilla/readability";
 import { JSDOM } from "jsdom";
 import Parser from "rss-parser";
-import { getSafeIframeSrc, getSameOriginIframeUrl, getVideoEmbed } from "./article-embeds";
+import { configureEmbedIframe, getVideoEmbed, sanitizeIframe } from "./article-embeds";
 
 const parser = new Parser({
   timeout: 15000,
@@ -88,54 +88,14 @@ function makeAbsoluteUrls(html: string, baseUrl: string): string {
   return document.body.innerHTML;
 }
 
-/** Link-out card for embeds browsers refuse to frame (X-Frame-Options). */
-function buildEmbedFallback(
-  document: Document,
-  url: string,
-  title: string | null,
-): HTMLDivElement {
-  const box = document.createElement("div");
-  box.setAttribute("class", "article-embed");
-  const label = document.createElement("p");
-  label.setAttribute("class", "article-embed-title");
-  label.textContent = title?.trim() || "Interactive content";
-  const link = document.createElement("a");
-  link.setAttribute("class", "article-embed-link");
-  link.setAttribute("href", url);
-  link.setAttribute("target", "_blank");
-  link.setAttribute("rel", "noreferrer");
-  link.textContent = "Open interactive content";
-  box.append(label, link);
-  return box;
-}
-
 function sanitizeArticleHtml(html: string, baseUrl: string): string {  const dom = new JSDOM(`<body>${html}</body>`, { url: baseUrl });
   const document = dom.window.document;
   for (const element of document.querySelectorAll("script, style, noscript, object, embed, form")) {
     element.remove();
   }
 
-  for (const iframe of Array.from(document.querySelectorAll("iframe"))) {
-    const rawSrc = iframe.getAttribute("src") ?? "";
-    const embed = getSafeIframeSrc(rawSrc, baseUrl);
-    if (embed) {
-      iframe.setAttribute("src", embed.src);
-      iframe.setAttribute("title", iframe.getAttribute("title") || embed.title);
-      iframe.setAttribute("loading", "lazy");
-      iframe.setAttribute("allow", "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share");
-      iframe.setAttribute("allowfullscreen", "true");
-      continue;
-    }
-    // Site-owned interactive demos (e.g. PlanetScale's relative
-    // /blog/*/iframe embeds) send `X-Frame-Options: SAMEORIGIN`, so browsers
-    // refuse to render them inside the reader. Replace with a link-out card
-    // instead of a broken frame.
-    const demoUrl = getSameOriginIframeUrl(rawSrc, baseUrl);
-    if (demoUrl) {
-      iframe.replaceWith(buildEmbedFallback(document, demoUrl, iframe.getAttribute("title")));
-      continue;
-    }
-    iframe.remove();
+  for (const iframe of Array.from(document.querySelectorAll<HTMLIFrameElement>("iframe"))) {
+    sanitizeIframe(iframe, document, baseUrl);
   }
 
   for (const anchor of Array.from(document.querySelectorAll("a[href]"))) {
@@ -144,11 +104,7 @@ function sanitizeArticleHtml(html: string, baseUrl: string): string {  const dom
     const parent = anchor.parentElement;
     if (!embed || !parent || parent.children.length !== 1 || parent.textContent?.trim() !== href) continue;
     const iframe = document.createElement("iframe");
-    iframe.setAttribute("src", embed.src);
-    iframe.setAttribute("title", embed.title);
-    iframe.setAttribute("loading", "lazy");
-    iframe.setAttribute("allow", "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share");
-    iframe.setAttribute("allowfullscreen", "true");
+    configureEmbedIframe(iframe, embed);
     parent.replaceWith(iframe);
   }
   return makeAbsoluteUrls(document.body.innerHTML, baseUrl).trim();
@@ -404,6 +360,8 @@ function findFirstBodyImage(html: string | undefined, baseUrl: string): string |
  * wins outright). A feed image narrower than 640px loses to the first body
  * image; the feed image remains as fallback.
  */
+const ENCLOSURE_IMAGE_MIN_BYTES = 50_000;
+
 function resolveItemThumbnail(
   rawItem: Record<string, unknown>,
   htmlContent: string | undefined,
@@ -414,14 +372,22 @@ function resolveItemThumbnail(
   let bestWidth = -2;
   for (const candidate of collectFeedImageCandidates(rawItem, feedBaseUrl)) {
     const score = candidate.width ?? -1;
-    if (score > bestWidth) {
+    // Enclosures never carry dimensions, so without this every dimensionless
+    // candidate ties at -1 and the first one wins regardless of byte size.
+    // Unknown length (0) remains preferred, while known enclosures compete by
+    // length so a larger usable image is not discarded.
+    const longerEnclosure =
+      candidate.enclosure &&
+      feed?.enclosure &&
+      (candidate.length === 0 || candidate.length > feed.length);
+    if (score > bestWidth || (score === bestWidth && longerEnclosure)) {
       bestWidth = score;
       feed = candidate;
     }
   }
   const hasFeedImage = feed != null;
 
-  if (feed?.enclosure && (feed.length === 0 || feed.length > 50_000)) {
+  if (feed?.enclosure && (feed.length === 0 || feed.length > ENCLOSURE_IMAGE_MIN_BYTES)) {
     return { url: feed.url, fromBody: false, hasFeedImage };
   }
   if (feed && (feed.width ?? 0) >= 640) {

@@ -1,5 +1,5 @@
 import { Elysia, t } from "elysia";
-import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import { auth } from "./auth";
 import { db } from "./db";
 import { article, feed } from "./db/schema";
@@ -191,10 +191,17 @@ export const rssApi = new Elysia({ prefix: "/api/rss" })
       const user = await requireUser(request);
       const conditions = [eq(article.userId, user.id), eq(article.isRead, false)];
       if (body.feedId) conditions.push(eq(article.feedId, body.feedId));
+      if (body.articleIds && body.articleIds.length > 0)
+        conditions.push(inArray(article.id, body.articleIds));
       await db.update(article).set({ isRead: true }).where(and(...conditions));
       return { ok: true };
     },
-    { body: t.Object({ feedId: t.Optional(t.String()) }) },
+    {
+      body: t.Object({
+        feedId: t.Optional(t.String()),
+        articleIds: t.Optional(t.Array(t.String())),
+      }),
+    },
   );
 
 export type RssApi = typeof rssApi;

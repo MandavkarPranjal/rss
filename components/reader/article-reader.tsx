@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowSquareOut, Newspaper, Star } from "@phosphor-icons/react";
 import ArticleContent from "@/components/article-content";
 import { api } from "@/lib/rss-client";
@@ -26,7 +26,7 @@ export default function ArticleReader({
   showBack,
 }: {
   articleId: string | null;
-  onBack: () => void;
+  onBack?: () => void;
   showBack?: boolean;
 }) {
   const cached = useCachedArticle(articleId);
@@ -50,10 +50,25 @@ export default function ArticleReader({
   }, [articleId, cached]);
 
   const article = cached ?? (direct && direct.id === articleId ? direct.article : null);
+  const fetchedFullRef = useRef<Set<string>>(new Set());
+  // Keyed by article + URL so a failure hides only the current banner: when
+  // the article (or its image) changes the key mismatches and the new figure
+  // renders without any reset effect.
+  const [brokenBannerKey, setBrokenBannerKey] = useState<string | null>(null);
+  const bannerKey = article ? `${article.id}|${article.imageUrl ?? ""}` : null;
+  const bannerBroken = bannerKey !== null && brokenBannerKey === bannerKey;
 
   // Lazily fetch the full body for rows that only carry a snippet.
+  // The list endpoint omits `content` (=> undefined) on purpose; the detail
+  // endpoint returns `null`/`""` when the article genuinely has no body.
+  // Only `undefined` means "not yet fetched" — otherwise an empty body would
+  // stay falsy after the patch and re-trigger this effect forever. The ref
+  // guards against a second fetch while one is already in flight (any cache
+  // patch creates a new `article` object and would re-run the effect).
   useEffect(() => {
-    if (!article || article.content) return;
+    if (!article || article.content !== undefined) return;
+    if (fetchedFullRef.current.has(article.id)) return;
+    fetchedFullRef.current.add(article.id);
     let cancelled = false;
     api(`/api/rss/articles/${article.id}`)
       .then((full) => {
@@ -66,7 +81,9 @@ export default function ArticleReader({
               : prev,
           );
       })
-      .catch(() => {});
+      .catch(() => {
+        fetchedFullRef.current.delete(article.id);
+      });
     return () => {
       cancelled = true;
     };
@@ -133,7 +150,7 @@ export default function ArticleReader({
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
       <div className="mx-auto max-w-2xl px-6 py-10 sm:px-10 sm:py-12 xl:max-w-3xl">
-        {showBack && (
+        {showBack && onBack && (
           <button
             onClick={onBack}
             className="mb-6 text-[13px] text-[#787774] underline decoration-[#EAEAEA] underline-offset-4 md:hidden"
@@ -141,7 +158,7 @@ export default function ArticleReader({
             ← Back to stories
           </button>
         )}
-        {article.imageUrl && (
+        {article.imageUrl && !bannerBroken && (
           <figure className="article-banner mb-8">
             {/* eslint-disable-next-line @next/next/no-img-element -- feed-supplied remote image */}
             <img
@@ -150,8 +167,8 @@ export default function ArticleReader({
               className="h-full w-full object-cover"
               loading="lazy"
               referrerPolicy="no-referrer"
-              onError={(e) => {
-                e.currentTarget.closest("figure")?.remove();
+              onError={() => {
+                if (bannerKey) setBrokenBannerKey(bannerKey);
               }}
             />
           </figure>
