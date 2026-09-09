@@ -80,7 +80,11 @@ export default function ReaderShell({ children }: { children: ReactNode }) {
     return () => {
       window.removeEventListener("keydown", onKey);
       document.body.style.overflow = "";
-      (drawerRestoreFocusRef.current as HTMLElement | null)?.focus?.();
+      // The mobile trigger is hidden once the desktop drawer takes over, so
+      // do not restore focus to it after a breakpoint-driven close.
+      if (!window.matchMedia("(min-width: 1024px)").matches) {
+        (drawerRestoreFocusRef.current as HTMLElement | null)?.focus?.();
+      }
     };
   }, [drawerOpen]);
 
