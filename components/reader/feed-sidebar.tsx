@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { parseAsStringEnum, useQueryState } from "nuqs";
 import { Checks, Plus, Trash } from "@phosphor-icons/react";
+import { toast } from "sonner";
 import { api } from "@/lib/rss-client";
 import type { RssFilter } from "@/lib/rss-types";
 import { useRssStore } from "./rss-store";
@@ -56,12 +57,21 @@ export default function FeedSidebar({ onNavigate }: { onNavigate?: () => void })
     if (!newUrl.trim()) return;
     setLoading(true);
     setFeedsError("");
-    try {
-      await api("/api/rss/feeds", { method: "POST", body: JSON.stringify({ url: newUrl }) });
+    const feedUrl = newUrl.trim();
+    const request = (async () => {
+      await api("/api/rss/feeds", { method: "POST", body: JSON.stringify({ url: feedUrl }) });
       setNewUrl("");
       invalidateArticlesCache();
       loadFeeds();
       revalidateCurrent();
+    })();
+    toast.promise(request, {
+      loading: "Adding feed…",
+      success: "Feed added",
+      error: (error) => (error instanceof Error ? error.message : "Failed to add feed"),
+    });
+    try {
+      await request;
     } catch (e) {
       setFeedsError(e instanceof Error ? e.message : "Failed to add feed");
     } finally {
@@ -73,11 +83,17 @@ export default function FeedSidebar({ onNavigate }: { onNavigate?: () => void })
     setFeeds((prev) =>
       prev.map((f) => (!feedId || f.id === feedId ? { ...f, unreadCount: 0 } : f)),
     );
-    try {
-      await api("/api/rss/articles/mark-all-read", {
+    const request = api("/api/rss/articles/mark-all-read", {
         method: "POST",
         body: JSON.stringify(feedId ? { feedId } : {}),
       });
+    toast.promise(request, {
+      loading: "Marking stories as read…",
+      success: "All stories marked read",
+      error: (error) => (error instanceof Error ? error.message : "Failed to mark all read"),
+    });
+    try {
+      await request;
     } catch (e) {
       setFeedsError(e instanceof Error ? e.message : "Failed to mark all read");
     }
@@ -87,11 +103,19 @@ export default function FeedSidebar({ onNavigate }: { onNavigate?: () => void })
 
   const refreshFeed = async (feedId: string) => {
     setLoading(true);
-    try {
+    const request = (async () => {
       await api(`/api/rss/feeds/${feedId}/refresh`, { method: "POST" });
       invalidateArticlesCache();
       revalidateCurrent();
       loadFeeds();
+    })();
+    toast.promise(request, {
+      loading: "Refreshing feed…",
+      success: "Feed refreshed",
+      error: (error) => (error instanceof Error ? error.message : "Refresh failed"),
+    });
+    try {
+      await request;
     } catch (e) {
       setFeedsError(e instanceof Error ? e.message : "Refresh failed");
     } finally {
@@ -101,7 +125,7 @@ export default function FeedSidebar({ onNavigate }: { onNavigate?: () => void })
 
   const removeFeed = async (feedId: string) => {
     if (!confirm("Remove this feed and its articles?")) return;
-    try {
+    const request = (async () => {
       await api(`/api/rss/feeds/${feedId}`, { method: "DELETE" });
       invalidateArticlesCache();
       loadFeeds();
@@ -111,6 +135,14 @@ export default function FeedSidebar({ onNavigate }: { onNavigate?: () => void })
         router.replace(filterHref(effectiveFilter, query));
         onNavigate?.();
       }
+    })();
+    toast.promise(request, {
+      loading: "Removing feed…",
+      success: "Feed removed",
+      error: (error) => (error instanceof Error ? error.message : "Failed to remove feed"),
+    });
+    try {
+      await request;
     } catch (e) {
       setFeedsError(e instanceof Error ? e.message : "Failed to remove feed");
     }

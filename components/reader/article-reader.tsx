@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowSquareOut, Newspaper, Star } from "@phosphor-icons/react";
+import { toast } from "sonner";
 import ArticleContent from "@/components/article-content";
 import { api } from "@/lib/rss-client";
 import type { Article } from "@/lib/rss-types";
@@ -102,12 +103,26 @@ export default function ArticleReader({
           ? { id: prev.id, article: { ...prev.article, isStarred: next } }
           : prev,
       );
-    try {
-      await api(`/api/rss/articles/${article.id}`, {
+    const request = api(`/api/rss/articles/${article.id}`, {
         method: "PATCH",
         body: JSON.stringify({ isStarred: next }),
       });
-    } catch {}
+    toast.promise(request, {
+      loading: next ? "Saving star…" : "Removing star…",
+      success: next ? "Article starred" : "Article unstarred",
+      error: "Could not update star",
+    });
+    try {
+      await request;
+    } catch {
+      if (cached) patchCachedArticle(article.id, { isStarred: article.isStarred });
+      else
+        setDirect((prev) =>
+          prev && prev.id === article.id
+            ? { id: prev.id, article: { ...prev.article, isStarred: article.isStarred } }
+            : prev,
+        );
+    }
   };
 
   // Mark read when the reader opens an unread cached row (list already did

@@ -40,7 +40,7 @@ export default function SettingsModal({ open, onClose }: Props) {
         role="dialog"
         aria-modal="true"
         aria-label="Account settings"
-        className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl border border-[#EAEAEA] bg-white shadow-xl dark:border-white/10 dark:bg-[#201F1E]"
+        className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-xl border border-[#EAEAEA] bg-white shadow-xl dark:border-white/10 dark:bg-[#201F1E]"
       >
         <div className="flex items-center justify-between border-b border-[#EAEAEA] px-5 py-4 dark:border-white/10">
           <div>

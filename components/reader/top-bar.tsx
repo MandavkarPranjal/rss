@@ -4,11 +4,18 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef } from "react";
 import { GearSix, MagnifyingGlass, Newspaper, SignOut } from "@phosphor-icons/react";
+import { toast } from "sonner";
 import { authClient, useSession } from "@/lib/auth-client";
 import { useRssStore } from "./rss-store";
 import { useSearchQuery } from "./use-articles";
 
-export default function TopBar({ onOpenFeeds }: { onOpenFeeds: () => void }) {
+export default function TopBar({
+  onOpenFeeds,
+  onOpenSettings,
+}: {
+  onOpenFeeds: () => void;
+  onOpenSettings: () => void;
+}) {
   const { totalUnread } = useRssStore();
   const { data: session } = useSession();
   const router = useRouter();
@@ -57,18 +64,26 @@ export default function TopBar({ onOpenFeeds }: { onOpenFeeds: () => void }) {
           <span className="hidden max-w-40 truncate text-[13px] text-[#787774] xl:inline">
             {session?.user.email}
           </span>
-          <Link
-            href="/settings"
+          <button
+            type="button"
+            onClick={onOpenSettings}
             title="Account settings"
             className="inline-flex items-center gap-1.5 rounded-[6px] border border-[#EAEAEA] px-2.5 py-1.5 text-[13px] transition hover:bg-[#F7F6F3] active:scale-[0.98] dark:border-white/10 dark:hover:bg-white/5"
           >
             <GearSix size={14} weight="bold" /> <span className="hidden sm:inline">Settings</span>
-          </Link>
+          </button>
           <button
             aria-label="Sign out"
-            onClick={async () => {
-              const { error } = await authClient.signOut();
-              if (!error) router.replace("/sign-in");
+            onClick={() => {
+              const request = authClient.signOut().then(({ error }) => {
+                if (error) throw new Error(error.message ?? "Could not sign out");
+                router.replace("/sign-in");
+              });
+              toast.promise(request, {
+                loading: "Signing out…",
+                success: "Signed out",
+                error: (error) => (error instanceof Error ? error.message : "Could not sign out"),
+              });
             }}
             className="inline-flex items-center gap-1.5 rounded-[6px] border border-[#EAEAEA] px-2.5 py-1.5 text-[13px] transition hover:bg-[#F7F6F3] active:scale-[0.98] dark:border-white/10 dark:hover:bg-white/5"
           >

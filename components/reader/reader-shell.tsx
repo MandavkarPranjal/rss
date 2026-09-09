@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { X } from "@phosphor-icons/react";
 import { useSession } from "@/lib/auth-client";
 import FeedSidebar from "./feed-sidebar";
+import SettingsModal from "@/components/settings-modal";
 import { useRssStore } from "./rss-store";
 import TopBar from "./top-bar";
 
@@ -16,6 +17,7 @@ export default function ReaderShell({ children }: { children: ReactNode }) {
   const { data: session, isPending } = useSession();
   const { feedsError } = useRssStore();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const drawerPanelRef = useRef<HTMLDivElement>(null);
   const drawerRestoreFocusRef = useRef<Element | null>(null);
 
@@ -108,14 +110,20 @@ export default function ReaderShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex h-screen flex-col bg-[#FBFBFA] text-[#111111] dark:bg-[#191918] dark:text-[#ECECEA]">
-      <div aria-hidden={drawerOpen || undefined} inert={drawerOpen || undefined}>
-        <TopBar onOpenFeeds={() => setDrawerOpen(true)} />
+      <div
+        aria-hidden={drawerOpen || settingsOpen || undefined}
+        inert={drawerOpen || settingsOpen || undefined}
+      >
+        <TopBar
+          onOpenFeeds={() => setDrawerOpen(true)}
+          onOpenSettings={() => setSettingsOpen(true)}
+        />
       </div>
 
       {feedsError && (
         <div
-          aria-hidden={drawerOpen || undefined}
-          inert={drawerOpen || undefined}
+          aria-hidden={drawerOpen || settingsOpen || undefined}
+          inert={drawerOpen || settingsOpen || undefined}
           className="shrink-0 border-b border-[#EAEAEA] bg-[#FDEBEC] px-5 py-2 text-[13px] text-[#9F2F2D] dark:border-white/10 dark:bg-[#9F2F2D]/20 dark:text-[#F3B8B6]"
         >
           {feedsError}
@@ -123,8 +131,8 @@ export default function ReaderShell({ children }: { children: ReactNode }) {
       )}
 
       <div
-        aria-hidden={drawerOpen || undefined}
-        inert={drawerOpen || undefined}
+        aria-hidden={drawerOpen || settingsOpen || undefined}
+        inert={drawerOpen || settingsOpen || undefined}
         className="flex min-h-0 min-w-0 flex-1"
       >
         <aside className="hidden w-72 shrink-0 flex-col border-r border-[#EAEAEA] bg-[#F7F6F3] lg:flex dark:border-white/10 dark:bg-[#232220]">
@@ -158,6 +166,8 @@ export default function ReaderShell({ children }: { children: ReactNode }) {
           </div>
         </div>
       )}
+
+      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   );
 }

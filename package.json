@@ -27,6 +27,7 @@
     "react-dom": "19.2.8",
     "rss-parser": "^3.13.0",
     "shiki": "^4.4.3",
+    "sonner": "^2.0.8",
     "zod": "^4.5.4"
   },
   "devDependencies": {

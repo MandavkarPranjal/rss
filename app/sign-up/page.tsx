@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Newspaper } from "@phosphor-icons/react";
+import { toast } from "sonner";
 import { authClient, useSession } from "@/lib/auth-client";
 
 export default function SignUpPage() {
@@ -23,12 +24,24 @@ export default function SignUpPage() {
     e.preventDefault();
     setLoading(true);
     setError("");
-    const { error } = await authClient.signUp.email(
+    const request = authClient.signUp.email(
       { name, email, password, callbackURL: "/" },
       { onSuccess: () => router.replace("/") },
-    );
-    if (error) setError(error.message ?? "Sign up failed");
-    setLoading(false);
+    ).then(({ error }) => {
+      if (error) throw new Error(error.message ?? "Sign up failed");
+    });
+    toast.promise(request, {
+      loading: "Creating your account…",
+      success: "Account created",
+      error: (error) => (error instanceof Error ? error.message : "Sign up failed"),
+    });
+    try {
+      await request;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Sign up failed");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const inputCls =

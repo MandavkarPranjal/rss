@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { Checks, Star } from "@phosphor-icons/react";
+import { toast } from "sonner";
 import { api, timeAgo } from "@/lib/rss-client";
 import type { Article, RssFilter } from "@/lib/rss-types";
 import { useRssStore } from "./rss-store";
@@ -101,11 +102,17 @@ export default function ArticleList({ feedId, filter, heading }: Props) {
   const toggleStar = async (a: Article) => {
     const next = !a.isStarred;
     patchCachedArticle(a.id, { isStarred: next });
-    try {
-      await api(`/api/rss/articles/${a.id}`, {
+    const request = api(`/api/rss/articles/${a.id}`, {
         method: "PATCH",
         body: JSON.stringify({ isStarred: next }),
       });
+    toast.promise(request, {
+      loading: next ? "Saving star…" : "Removing star…",
+      success: next ? "Article starred" : "Article unstarred",
+      error: "Could not update star",
+    });
+    try {
+      await request;
     } catch {
       patchCachedArticle(a.id, { isStarred: a.isStarred });
     }
@@ -133,13 +140,19 @@ export default function ArticleList({ feedId, filter, heading }: Props) {
       }
       return next;
     });
-    try {
-      await api("/api/rss/articles/mark-all-read", {
+    const request = api("/api/rss/articles/mark-all-read", {
         method: "POST",
         body: JSON.stringify(
           feedId ? { feedId, articleIds: [...ids] } : { articleIds: [...ids] },
         ),
       });
+    toast.promise(request, {
+      loading: "Marking stories as read…",
+      success: "Stories marked read",
+      error: (error) => (error instanceof Error ? error.message : "Failed to mark all read"),
+    });
+    try {
+      await request;
     } catch (e) {
       setFeedsError(e instanceof Error ? e.message : "Failed to mark all read");
     }

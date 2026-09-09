@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { EnvelopeSimple, Fingerprint, Key, Plus, Trash } from "@phosphor-icons/react";
+import { toast } from "sonner";
 import { authClient, useSession } from "@/lib/auth-client";
 
 type Passkey = {
@@ -106,20 +107,24 @@ export default function SettingsForm({ autoLoadPasskeys = true }: { autoLoadPass
       return;
     }
     setPasswordLoading(true);
-    try {
-      const { error } = await authClient.changePassword({
+    const request = authClient.changePassword({
         currentPassword,
         newPassword,
         revokeOtherSessions: true,
-      });
-      if (error) {
-        setPasswordError(error.message ?? "Could not change password");
-      } else {
+      }).then(({ error }) => {
+        if (error) throw new Error(error.message ?? "Could not change password");
         setPasswordSuccess("Password changed. Other sessions were signed out.");
         setCurrentPassword("");
         setNewPassword("");
         setConfirmPassword("");
-      }
+      });
+    toast.promise(request, {
+      loading: "Changing password…",
+      success: "Password changed",
+      error: (error) => (error instanceof Error ? error.message : "Could not change password"),
+    });
+    try {
+      await request;
     } catch (e) {
       setPasswordError(e instanceof Error ? e.message : "Could not change password");
     } finally {
@@ -141,20 +146,24 @@ export default function SettingsForm({ autoLoadPasskeys = true }: { autoLoadPass
       return;
     }
     setEmailLoading(true);
-    try {
-      const { error } = await authClient.changeEmail({
+    const request = authClient.changeEmail({
         newEmail: trimmed,
         callbackURL: "/",
-      });
-      if (error) {
-        setEmailError(error.message ?? "Could not change email");
-      } else {
+      }).then(async ({ error }) => {
+        if (error) throw new Error(error.message ?? "Could not change email");
         setEmailSuccess(
           "Email update requested. It applies immediately unless verification is required — then check your new inbox to confirm.",
         );
         setNewEmail("");
         await refetch();
-      }
+      });
+    toast.promise(request, {
+      loading: "Updating email…",
+      success: "Email update requested",
+      error: (error) => (error instanceof Error ? error.message : "Could not change email"),
+    });
+    try {
+      await request;
     } catch (e) {
       setEmailError(e instanceof Error ? e.message : "Could not change email");
     } finally {
@@ -166,16 +175,20 @@ export default function SettingsForm({ autoLoadPasskeys = true }: { autoLoadPass
     e.preventDefault();
     setPasskeysError("");
     setAddingPasskey(true);
-    try {
-      const { error } = await authClient.passkey.addPasskey(
+    const request = authClient.passkey.addPasskey(
         passkeyName.trim() ? { name: passkeyName.trim() } : undefined,
-      );
-      if (error) {
-        setPasskeysError(error.message ?? "Could not add passkey");
-      } else {
+      ).then(async ({ error }) => {
+        if (error) throw new Error(error.message ?? "Could not add passkey");
         setPasskeyName("");
         await loadPasskeys();
-      }
+      });
+    toast.promise(request, {
+      loading: "Registering passkey…",
+      success: "Passkey added",
+      error: (error) => (error instanceof Error ? error.message : "Could not add passkey"),
+    });
+    try {
+      await request;
     } catch (e) {
       setPasskeysError(e instanceof Error ? e.message : "Could not add passkey");
     } finally {
@@ -187,13 +200,17 @@ export default function SettingsForm({ autoLoadPasskeys = true }: { autoLoadPass
     if (!confirm("Delete this passkey? You will no longer be able to sign in with it.")) return;
     setPasskeysError("");
     setDeletingId(id);
-    try {
-      const { error } = await authClient.passkey.deletePasskey({ id });
-      if (error) {
-        setPasskeysError(error.message ?? "Could not delete passkey");
-      } else {
+    const request = authClient.passkey.deletePasskey({ id }).then(({ error }) => {
+        if (error) throw new Error(error.message ?? "Could not delete passkey");
         setPasskeys((prev) => prev.filter((p) => p.id !== id));
-      }
+      });
+    toast.promise(request, {
+      loading: "Deleting passkey…",
+      success: "Passkey deleted",
+      error: (error) => (error instanceof Error ? error.message : "Could not delete passkey"),
+    });
+    try {
+      await request;
     } catch (e) {
       setPasskeysError(e instanceof Error ? e.message : "Could not delete passkey");
     } finally {

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Keyhole, Newspaper } from "@phosphor-icons/react";
+import { toast } from "sonner";
 import { authClient, useSession } from "@/lib/auth-client";
 
 export default function SignInPage() {
@@ -22,23 +23,44 @@ export default function SignInPage() {
     e.preventDefault();
     setLoading(true);
     setError("");
-    const { error } = await authClient.signIn.email(
+    const request = authClient.signIn.email(
       { email, password, callbackURL: "/" },
-      {
-        onSuccess: () => router.replace("/"),
-      },
-    );
-    if (error) setError(error.message ?? "Sign in failed");
-    setLoading(false);
+      { onSuccess: () => router.replace("/") },
+    ).then(({ error }) => {
+      if (error) throw new Error(error.message ?? "Sign in failed");
+    });
+    toast.promise(request, {
+      loading: "Signing in…",
+      success: "Welcome back",
+      error: (error) => (error instanceof Error ? error.message : "Sign in failed"),
+    });
+    try {
+      await request;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Sign in failed");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const passkeyLogin = async () => {
     setError("");
-    const { error } = await authClient.signIn.passkey(
+    const request = authClient.signIn.passkey(
       {},
       { onSuccess: () => router.replace("/") },
-    );
-    if (error) setError(error.message ?? "Passkey sign in failed");
+    ).then(({ error }) => {
+      if (error) throw new Error(error.message ?? "Passkey sign in failed");
+    });
+    toast.promise(request, {
+      loading: "Checking passkey…",
+      success: "Welcome back",
+      error: (error) => (error instanceof Error ? error.message : "Passkey sign in failed"),
+    });
+    try {
+      await request;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Passkey sign in failed");
+    }
   };
 
   const inputCls =
