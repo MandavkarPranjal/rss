@@ -120,6 +120,7 @@ export const rssApi = new Elysia({ prefix: "/api/rss" })
         link: article.link,
         snippet: article.snippet,
         author: article.author,
+        imageUrl: article.imageUrl,
         publishedAt: article.publishedAt,
         isRead: article.isRead,
         isStarred: article.isStarred,

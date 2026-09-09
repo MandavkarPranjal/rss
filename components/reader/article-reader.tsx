@@ -144,7 +144,16 @@ export default function ArticleReader({
         {article.imageUrl && (
           <figure className="article-banner mb-8">
             {/* eslint-disable-next-line @next/next/no-img-element -- feed-supplied remote image */}
-            <img src={article.imageUrl} alt={article.title} className="h-full w-full object-cover" loading="lazy" />
+            <img
+              src={article.imageUrl}
+              alt={article.title}
+              className="h-full w-full object-cover"
+              loading="lazy"
+              referrerPolicy="no-referrer"
+              onError={(e) => {
+                e.currentTarget.closest("figure")?.remove();
+              }}
+            />
           </figure>
         )}
         <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-[#787774]">
