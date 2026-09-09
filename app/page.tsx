@@ -15,6 +15,7 @@ import {
 } from "@phosphor-icons/react";
 import { authClient, useSession } from "@/lib/auth-client";
 import SettingsModal from "@/components/settings-modal";
+import ArticleContent from "@/components/article-content";
 
 type Feed = {
   id: string;
@@ -687,10 +688,7 @@ export default function Home() {
                     </span>
                   )}
                 </div>
-                <div
-                  className="reader-body mt-6"
-                  dangerouslySetInnerHTML={{ __html: selectedArticle.content ?? selectedArticle.snippet ?? "" }}
-                />
+                <ArticleContent html={selectedArticle.content ?? selectedArticle.snippet ?? ""} />
               </div>
             </div>
           ) : (

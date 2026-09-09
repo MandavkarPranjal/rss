@@ -1,6 +1,7 @@
 import { Readability } from "@mozilla/readability";
 import { JSDOM } from "jsdom";
 import Parser from "rss-parser";
+import { getVideoEmbed } from "./article-embeds";
 
 const parser = new Parser({
   timeout: 15000,
@@ -74,8 +75,35 @@ function makeAbsoluteUrls(html: string, baseUrl: string): string {
 function sanitizeArticleHtml(html: string, baseUrl: string): string {
   const dom = new JSDOM(`<body>${html}</body>`, { url: baseUrl });
   const document = dom.window.document;
-  for (const element of document.querySelectorAll("script, style, noscript, iframe, object, embed, form")) {
+  for (const element of document.querySelectorAll("script, style, noscript, object, embed, form")) {
     element.remove();
+  }
+
+  for (const iframe of Array.from(document.querySelectorAll("iframe"))) {
+    const embed = getVideoEmbed(iframe.getAttribute("src") ?? "");
+    if (!embed) {
+      iframe.remove();
+      continue;
+    }
+    iframe.setAttribute("src", embed.src);
+    iframe.setAttribute("title", iframe.getAttribute("title") || embed.title);
+    iframe.setAttribute("loading", "lazy");
+    iframe.setAttribute("allow", "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share");
+    iframe.setAttribute("allowfullscreen", "true");
+  }
+
+  for (const anchor of Array.from(document.querySelectorAll("a[href]"))) {
+    const href = anchor.getAttribute("href") ?? "";
+    const embed = getVideoEmbed(href);
+    const parent = anchor.parentElement;
+    if (!embed || !parent || parent.children.length !== 1 || parent.textContent?.trim() !== href) continue;
+    const iframe = document.createElement("iframe");
+    iframe.setAttribute("src", embed.src);
+    iframe.setAttribute("title", embed.title);
+    iframe.setAttribute("loading", "lazy");
+    iframe.setAttribute("allow", "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share");
+    iframe.setAttribute("allowfullscreen", "true");
+    parent.replaceWith(iframe);
   }
   return makeAbsoluteUrls(document.body.innerHTML, baseUrl).trim();
 }
@@ -177,7 +205,10 @@ export async function fetchFeed(rawUrl: string): Promise<ParsedFeed> {
     // RSS <description> as `content`, so checking it first silently discards
     // the full article when a feed publishes both fields.
     snippet: (item.contentSnippet ?? item["content:encodedSnippet"] ?? item.summary)?.slice(0, 500),
-    content: item["content:encoded"] ?? item.content ?? item.summary,
+    content: (() => {
+      const raw = item["content:encoded"] ?? item.content ?? item.summary;
+      return raw ? sanitizeArticleHtml(raw, item.link ?? url) : undefined;
+    })(),
     author: item.creator ?? item.author,
     imageUrl: item.enclosure?.url,
     publishedAt: item.isoDate ? new Date(item.isoDate) : item.pubDate ? new Date(item.pubDate) : undefined,

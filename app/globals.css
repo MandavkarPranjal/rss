@@ -204,6 +204,15 @@ body {
   border-radius: 12px;
   margin: 1.5em auto;
 }
+.reader-body iframe {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  margin: 1.75em 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bone);
+}
 .reader-body blockquote {
   border-left: 2px solid var(--line-strong);
   padding-left: 1rem;
