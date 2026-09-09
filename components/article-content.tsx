@@ -1,7 +1,145 @@
 "use client";
 
 import { useMemo } from "react";
+import { useEffect, useRef } from "react";
 import { configureEmbedIframe, getVideoEmbed, sanitizeIframe } from "@/lib/article-embeds";
+
+const SHIKI_LANGUAGES = [
+  "bash",
+  "css",
+  "go",
+  "html",
+  "javascript",
+  "json",
+  "jsx",
+  "markdown",
+  "python",
+  "sql",
+  "tsx",
+  "typescript",
+  "xml",
+  "yaml",
+] as const;
+
+const LANGUAGE_ALIASES: Record<string, (typeof SHIKI_LANGUAGES)[number]> = {
+  deno: "typescript",
+  js: "javascript",
+  md: "markdown",
+  py: "python",
+  sh: "bash",
+  shell: "bash",
+  ts: "typescript",
+  yml: "yaml",
+};
+
+let highlighterPromise: Promise<Awaited<ReturnType<typeof import("shiki/bundle/web")["createHighlighter"]>>> | null = null;
+
+function getHighlighter() {
+  highlighterPromise ??= import("shiki/bundle/web").then(({ createHighlighter }) =>
+    createHighlighter({
+      langs: [...SHIKI_LANGUAGES],
+      themes: ["min-light", "min-dark"],
+    }),
+  );
+  return highlighterPromise;
+}
+
+function getLanguage(block: HTMLElement): string {
+  const code = block.querySelector("code");
+  const className = code?.className || block.className;
+  const match = className.match(/(?:language|lang)-([\w#+-]+)/i);
+  const declared = (
+    code?.getAttribute("data-language") ||
+    code?.getAttribute("data-lang") ||
+    block.getAttribute("data-language") ||
+    block.getAttribute("data-lang") ||
+    match?.[1] ||
+    "text"
+  ).toLowerCase();
+  return LANGUAGE_ALIASES[declared] ?? (SHIKI_LANGUAGES.includes(declared as (typeof SHIKI_LANGUAGES)[number]) ? declared : "text");
+}
+
+function languageLabel(language: string) {
+  if (language === "text") return "Code";
+  return language === "javascript" ? "JavaScript" : language[0].toUpperCase() + language.slice(1);
+}
+
+async function copyText(text: string) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  textarea.remove();
+}
+
+function addCopyControls(root: HTMLDivElement) {
+  return Array.from(root.querySelectorAll<HTMLPreElement>("pre")).map((block) => {
+    if (block.closest(".reader-code-block")) return undefined;
+
+    const source = block.textContent ?? "";
+    const language = getLanguage(block);
+    const wrapper = document.createElement("div");
+    wrapper.className = "reader-code-block";
+    const toolbar = document.createElement("div");
+    toolbar.className = "reader-code-toolbar";
+
+    const label = document.createElement("span");
+    label.className = "reader-code-language";
+    label.textContent = languageLabel(language);
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "reader-code-copy";
+    button.textContent = "Copy";
+    button.setAttribute("aria-label", `Copy ${languageLabel(language).toLowerCase()} snippet`);
+    const onClick = () => {
+      copyText(source).then(() => {
+        button.textContent = "Copied";
+        window.setTimeout(() => {
+          button.textContent = "Copy";
+        }, 1600);
+      }).catch(() => {
+        button.textContent = "Couldn’t copy";
+        window.setTimeout(() => {
+          button.textContent = "Copy";
+        }, 1600);
+      });
+    };
+    button.addEventListener("click", onClick);
+    toolbar.append(label, button);
+    wrapper.append(toolbar, block.cloneNode(true));
+    block.replaceWith(wrapper);
+    return () => button.removeEventListener("click", onClick);
+  }).filter((cleanup): cleanup is () => void => Boolean(cleanup));
+}
+
+async function highlightCodeBlocks(root: HTMLDivElement, isCancelled: () => boolean) {
+  const highlighter = await getHighlighter();
+  if (isCancelled()) return;
+  root.querySelectorAll<HTMLElement>(".reader-code-block pre").forEach((block) => {
+    if (isCancelled()) return;
+    const code = block.querySelector("code");
+    if (!code) return;
+    const language = getLanguage(block);
+    if (language === "text") return;
+    const highlighted = highlighter.codeToHtml(code.textContent ?? "", {
+      lang: language,
+      themes: { light: "min-light", dark: "min-dark" },
+    });
+    const rendered = document.createElement("div");
+    rendered.innerHTML = highlighted;
+    const highlightedPre = rendered.firstElementChild;
+    if (highlightedPre) block.replaceWith(highlightedPre);
+  });
+}
 
 function enhanceArticleHtml(html: string, baseUrl?: string) {
   if (typeof DOMParser === "undefined") return html;
@@ -34,5 +172,21 @@ function enhanceArticleHtml(html: string, baseUrl?: string) {
 
 export default function ArticleContent({ html, baseUrl }: { html: string; baseUrl?: string }) {
   const enhancedHtml = useMemo(() => enhanceArticleHtml(html, baseUrl), [html, baseUrl]);
-  return <div className="reader-body mt-6" dangerouslySetInnerHTML={{ __html: enhancedHtml }} />;
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const root = contentRef.current;
+    if (!root) return;
+    const cleanups = addCopyControls(root);
+    let cancelled = false;
+    highlightCodeBlocks(root, () => cancelled).catch(() => {
+      // Code remains readable and copyable if a language grammar cannot load.
+    });
+    return () => {
+      cancelled = true;
+      cleanups.forEach((cleanup) => cleanup());
+    };
+  }, [enhancedHtml]);
+
+  return <div ref={contentRef} className="reader-body mt-6" dangerouslySetInnerHTML={{ __html: enhancedHtml }} />;
 }

@@ -115,6 +115,68 @@ type FetchedArticle = {
   imageUrl?: string;
 };
 
+type SourceCodeBlock = {
+  language?: string;
+  text: string;
+  beforeText?: string;
+  afterText?: string;
+};
+
+function normalizeText(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function extractSourceCodeBlocks(document: Document): SourceCodeBlock[] {
+  return Array.from(document.querySelectorAll("pre"))
+    .map((pre) => {
+      const code = pre.querySelector("code");
+      const className = `${pre.className} ${code?.className ?? ""}`;
+      const language = className.match(/(?:language|lang)-([\w#+-]+)/i)?.[1];
+      const container = pre.parentElement;
+      return {
+        language,
+        text: pre.textContent ?? "",
+        beforeText: container?.previousElementSibling?.textContent ?? undefined,
+        afterText: container?.nextElementSibling?.textContent ?? undefined,
+      };
+    })
+    .filter(({ text }) => text.trim().length > 0);
+}
+
+function restoreMissingCodeBlocks(content: string, blocks: SourceCodeBlock[], baseUrl: string): string {
+  if (!blocks.length) return content;
+  const restored = new JSDOM(`<body>${content}</body>`, { url: baseUrl });
+  const body = restored.window.document.body;
+  const existing = new Set(
+    Array.from(body.querySelectorAll("pre")).map((pre) => pre.textContent?.trim() ?? ""),
+  );
+
+  for (const block of blocks) {
+    if (existing.has(block.text.trim())) continue;
+    const pre = restored.window.document.createElement("pre");
+    const code = restored.window.document.createElement("code");
+    if (block.language) code.className = `language-${block.language}`;
+    code.textContent = block.text;
+    pre.append(code);
+
+    const before = normalizeText(block.beforeText ?? "");
+    const after = normalizeText(block.afterText ?? "");
+    const candidates = Array.from(body.querySelectorAll("p, h1, h2, h3, h4, li"));
+    const previous = before
+      ? candidates.find((element) => normalizeText(element.textContent ?? "") === before)
+      : undefined;
+    const next = after
+      ? candidates.find((element) => normalizeText(element.textContent ?? "") === after)
+      : undefined;
+
+    if (previous?.parentNode) previous.parentNode.insertBefore(pre, previous.nextSibling);
+    else if (next?.parentNode) next.parentNode.insertBefore(pre, next);
+    else body.append(pre);
+    existing.add(block.text.trim());
+  }
+  return body.innerHTML;
+}
+
 // ---- Thumbnails (mirrors spacecowboy/Feeder: GoFeedExtensions + HtmlUtils) ----
 
 type FeedImageCandidate = {
@@ -449,13 +511,15 @@ async function fetchFullArticle(link: string): Promise<FetchedArticle | undefine
 
     const finalUrl = response.url || url.href;
     const dom = new JSDOM(html, { url: finalUrl });
+    const sourceCodeBlocks = extractSourceCodeBlocks(dom.window.document);
     const imageUrl = extractMetadataImage(dom.window.document, finalUrl);
     const result = new Readability(dom.window.document).parse();
     if (!result?.content || (result.textContent ?? "").trim().length < 200) {
       return imageUrl ? { imageUrl } : undefined;
     }
 
-    const content = sanitizeArticleHtml(result.content, finalUrl);
+    const contentWithCode = restoreMissingCodeBlocks(result.content, sourceCodeBlocks, finalUrl);
+    const content = sanitizeArticleHtml(contentWithCode, finalUrl);
     return content || imageUrl ? { content: content || undefined, imageUrl } : undefined;
   } catch {
     // Full-text retrieval is best-effort. The RSS item remains usable.

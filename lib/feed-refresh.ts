@@ -30,7 +30,18 @@ async function ingestItems(
         .onConflictDoUpdate({
           target: [article.feedId, article.guid],
           set: {
-            content: sql`CASE WHEN length(coalesce(excluded.content, '')) > length(coalesce(${article.content}, '')) THEN excluded.content ELSE ${article.content} END`,
+            content: sql`CASE
+              WHEN length(coalesce(excluded.content, '')) > length(coalesce(${article.content}, ''))
+                OR (
+                  strpos(coalesce(excluded.content, ''), '<pre') > 0
+                  AND (
+                    strpos(coalesce(${article.content}, ''), '<pre') = 0
+                    OR strpos(excluded.content, '<pre') < strpos(${article.content}, '<pre')
+                  )
+                )
+              THEN excluded.content
+              ELSE ${article.content}
+            END`,
             imageUrl: sql`coalesce(excluded.image_url, ${article.imageUrl})`,
           },
         })

@@ -271,6 +271,72 @@ body {
   padding: 1rem;
   overflow-x: auto;
 }
+.reader-code-block {
+  margin: 1.5em 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f6f6f5;
+}
+.reader-code-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 2.25rem;
+  padding: 0.35rem 0.65rem 0.35rem 0.85rem;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bone) 82%, transparent);
+}
+.reader-code-language {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.reader-code-copy {
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
+  padding: 0.22rem 0.5rem;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  line-height: 1.2;
+  transition: color 150ms ease, background-color 150ms ease;
+}
+.reader-code-copy:hover {
+  background: var(--paper);
+  color: var(--ink);
+}
+.reader-code-block pre {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 1rem;
+  color: var(--ink-soft);
+  line-height: 1.65;
+}
+.reader-code-block pre code {
+  display: block;
+  min-width: max-content;
+}
+.reader-code-block pre.shiki {
+  background: transparent !important;
+}
+.reader-code-block pre.shiki,
+.reader-code-block pre.shiki span {
+  color: var(--shiki-light);
+}
+@media (prefers-color-scheme: dark) {
+  .reader-code-block {
+    background: #20211f;
+  }
+  .reader-code-block pre.shiki,
+  .reader-code-block pre.shiki span {
+    color: var(--shiki-dark);
+  }
+}
 .reader-body :not(pre) > code {
   background: var(--pastel-yellow-bg);
   color: var(--ink);
