@@ -42,6 +42,7 @@ const EMPTY_FEEDS: Feed[] = [];
 const EMPTY_ARTICLES_CACHE: Record<string, Article[]> = {};
 const EMPTY_ARTICLES_ERROR: Record<string, string> = {};
 const EMPTY_SEEN_IDS = new Set<string>();
+const POLL_INTERVAL_MS = 60_000;
 
 export function RssStoreProvider({ children }: { children: ReactNode }) {
   const { data: session, isPending } = useSession();
@@ -151,6 +152,25 @@ export function RssStoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const revalidateCurrent = useCallback(() => setRevalidateTick((t) => t + 1), []);
+
+  useEffect(() => {
+    if (!sessionUserId) return;
+
+    const refresh = () => {
+      if (document.visibilityState === "hidden") return;
+      loadFeeds();
+    };
+
+    const interval = window.setInterval(refresh, POLL_INTERVAL_MS);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [sessionUserId, loadFeeds]);
 
   const totalUnread = useMemo(
     () => visibleFeeds.reduce((n, f) => n + (f.unreadCount ?? 0), 0),

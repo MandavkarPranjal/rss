@@ -32,6 +32,30 @@ export default function ArticleList({ feedId, filter, heading }: Props) {
 
   const activeFeed = feeds.find((f) => f.id === feedId) ?? null;
 
+  // Do not replace the article list while a story is open. A refresh can add
+  // rows at the top and change the cached article object, which is disruptive
+  // while the reader is part-way through an article. Polling resumes as soon
+  // as the user returns to the list.
+  useEffect(() => {
+    if (selectedId) return;
+
+    const refreshArticles = () => {
+      if (document.visibilityState === "hidden") return;
+      revalidateCurrent();
+    };
+
+    refreshArticles();
+    const interval = window.setInterval(refreshArticles, 60_000);
+    window.addEventListener("focus", refreshArticles);
+    document.addEventListener("visibilitychange", refreshArticles);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshArticles);
+      document.removeEventListener("visibilitychange", refreshArticles);
+    };
+  }, [selectedId, revalidateCurrent]);
+
   // Gentle staggered entry for new rows only.
   useEffect(() => {
     const root = listRef.current;
