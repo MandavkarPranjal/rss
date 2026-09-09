@@ -67,8 +67,10 @@ export default function ArticleReader({
   // patch creates a new `article` object and would re-run the effect).
   useEffect(() => {
     if (!article || article.content !== undefined) return;
-    if (fetchedFullRef.current.has(article.id)) return;
-    fetchedFullRef.current.add(article.id);
+    const fetchedIds = fetchedFullRef.current;
+    if (fetchedIds.has(article.id)) return;
+    const fetchedId = article.id;
+    fetchedIds.add(fetchedId);
     let cancelled = false;
     api(`/api/rss/articles/${article.id}`)
       .then((full) => {
@@ -82,10 +84,11 @@ export default function ArticleReader({
           );
       })
       .catch(() => {
-        fetchedFullRef.current.delete(article.id);
+        fetchedIds.delete(fetchedId);
       });
     return () => {
       cancelled = true;
+      fetchedIds.delete(fetchedId);
     };
   }, [article, cached, patchCachedArticle]);
 

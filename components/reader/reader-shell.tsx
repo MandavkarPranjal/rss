@@ -84,6 +84,16 @@ export default function ReaderShell({ children }: { children: ReactNode }) {
     };
   }, [drawerOpen]);
 
+  useEffect(() => {
+    const desktop = window.matchMedia("(min-width: 1024px)");
+    const closeDrawerOnDesktop = () => {
+      if (desktop.matches) setDrawerOpen(false);
+    };
+    closeDrawerOnDesktop();
+    desktop.addEventListener("change", closeDrawerOnDesktop);
+    return () => desktop.removeEventListener("change", closeDrawerOnDesktop);
+  }, []);
+
   if (isPending || !session) {
     return (
       <div className="flex flex-1 items-center justify-center bg-[#FBFBFA] p-10 dark:bg-[#191918]">
@@ -94,15 +104,25 @@ export default function ReaderShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex h-screen flex-col bg-[#FBFBFA] text-[#111111] dark:bg-[#191918] dark:text-[#ECECEA]">
-      <TopBar onOpenFeeds={() => setDrawerOpen(true)} />
+      <div aria-hidden={drawerOpen || undefined} inert={drawerOpen || undefined}>
+        <TopBar onOpenFeeds={() => setDrawerOpen(true)} />
+      </div>
 
       {feedsError && (
-        <div className="shrink-0 border-b border-[#EAEAEA] bg-[#FDEBEC] px-5 py-2 text-[13px] text-[#9F2F2D] dark:border-white/10 dark:bg-[#9F2F2D]/20 dark:text-[#F3B8B6]">
+        <div
+          aria-hidden={drawerOpen || undefined}
+          inert={drawerOpen || undefined}
+          className="shrink-0 border-b border-[#EAEAEA] bg-[#FDEBEC] px-5 py-2 text-[13px] text-[#9F2F2D] dark:border-white/10 dark:bg-[#9F2F2D]/20 dark:text-[#F3B8B6]"
+        >
           {feedsError}
         </div>
       )}
 
-      <div className="flex min-h-0 flex-1">
+      <div
+        aria-hidden={drawerOpen || undefined}
+        inert={drawerOpen || undefined}
+        className="flex min-h-0 flex-1"
+      >
         <aside className="hidden w-72 shrink-0 flex-col border-r border-[#EAEAEA] bg-[#F7F6F3] lg:flex dark:border-white/10 dark:bg-[#232220]">
           <FeedSidebar />
         </aside>

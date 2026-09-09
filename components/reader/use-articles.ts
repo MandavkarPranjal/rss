@@ -61,8 +61,9 @@ export function useArticles(feedId: string | null, filter: RssFilter, query: str
       delete next[key];
       return next;
     });
+    setFeedsError((prev) => (prev === error ? "" : prev));
     revalidateCurrent();
-  }, [key, revalidateCurrent, setArticlesError]);
+  }, [error, key, revalidateCurrent, setArticlesError, setFeedsError]);
 
   useEffect(() => {
     if (!sessionUserId) return;
