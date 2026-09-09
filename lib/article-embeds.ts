@@ -58,3 +58,61 @@ export function getVideoEmbed(urlValue: string): VideoEmbed | undefined {
 
   return undefined;
 }
+
+function resolveUrl(value: string, baseUrl?: string): URL | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  try {
+    return baseUrl ? new URL(trimmed, baseUrl) : new URL(trimmed);
+  } catch {
+    return undefined;
+  }
+}
+
+function isSameOrigin(url: URL, baseUrl: string): boolean {
+  try {
+    return url.origin === new URL(baseUrl).origin;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Resolve an <iframe> src against the article URL when it points at the same
+ * origin (e.g. PlanetScale's relative `/blog/.../iframe#...` interactive
+ * demos). Returns the absolute URL, or undefined for anything else.
+ *
+ * Note: same-origin does NOT mean embeddable — sites like PlanetScale send
+ * `X-Frame-Options: SAMEORIGIN`, so the browser refuses to render their pages
+ * inside our reader. Callers should link out to these URLs instead of
+ * rendering an <iframe> for them.
+ */
+export function getSameOriginIframeUrl(srcValue: string, baseUrl?: string): string | undefined {
+  if (!baseUrl) return undefined;
+  const resolved = resolveUrl(srcValue, baseUrl);
+  if (!resolved) return undefined;
+  if (resolved.protocol !== "http:" && resolved.protocol !== "https:") return undefined;
+  if (getVideoEmbed(resolved.href)) return undefined;
+  return isSameOrigin(resolved, baseUrl) ? resolved.href : undefined;
+}
+
+/**
+ * Decide whether an <iframe> src is safe to keep as an embed.
+ *
+ * Only known video providers (which explicitly allow framing) are kept.
+ * Same-origin interactive demos are NOT embeddable in practice
+ * (`X-Frame-Options: SAMEORIGIN` blocks cross-origin framing) — use
+ * getSameOriginIframeUrl() to render a link-out card for those instead.
+ * Cross-origin iframes from unknown hosts are dropped to avoid
+ * clickjacking / tracking.
+ */
+export function getSafeIframeSrc(srcValue: string, baseUrl?: string): VideoEmbed | undefined {
+  const resolved = resolveUrl(srcValue, baseUrl);
+  if (!resolved) return undefined;
+  if (resolved.protocol !== "http:" && resolved.protocol !== "https:") return undefined;
+
+  const video = getVideoEmbed(resolved.href);
+  if (video) return video;
+
+  return undefined;
+}

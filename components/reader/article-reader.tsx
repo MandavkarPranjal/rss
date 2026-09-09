@@ -207,7 +207,7 @@ export default function ArticleReader({
             Permalink
           </Link>
         </div>
-        <ArticleContent html={article.content ?? article.snippet ?? ""} />
+        <ArticleContent html={article.content ?? article.snippet ?? ""} baseUrl={article.link ?? undefined} />
       </div>
     </div>
   );

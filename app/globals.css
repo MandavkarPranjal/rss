@@ -207,11 +207,32 @@ body {
 .reader-body iframe {
   display: block;
   width: 100%;
+  height: auto;
+  min-height: 320px;
   aspect-ratio: 16 / 9;
   margin: 1.75em 0;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--bone);
+}
+.reader-body .article-embed {
+  margin: 1.75em 0;
+  padding: 1.25rem 1.5rem;
+  border: 1px dashed var(--line-strong);
+  border-radius: 12px;
+  background: var(--bone);
+}
+.reader-body .article-embed-title {
+  margin: 0 0 0.75rem;
+  font-size: 0.95rem;
+  color: var(--ink-soft);
+}
+.reader-body .article-embed-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+  font-weight: 500;
 }
 .reader-body blockquote {
   border-left: 2px solid var(--line-strong);
