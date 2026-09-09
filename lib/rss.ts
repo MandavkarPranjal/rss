@@ -2,6 +2,7 @@ import { Readability } from "@mozilla/readability";
 import { JSDOM } from "jsdom";
 import Parser from "rss-parser";
 import { configureEmbedIframe, getVideoEmbed, sanitizeIframe } from "./article-embeds";
+import { fetchPublicText } from "./safe-fetch";
 
 const parser = new Parser({
   timeout: 15000,
@@ -24,6 +25,8 @@ const ARTICLE_FETCH_TIMEOUT_MS = 10000;
 const ARTICLE_FETCH_MAX_BYTES = 5 * 1024 * 1024;
 const ARTICLE_FETCH_BATCH_SIZE = 4;
 const ARTICLE_FETCH_LIMIT = 20;
+const FEED_FETCH_TIMEOUT_MS = 15000;
+const FEED_FETCH_MAX_BYTES = 2 * 1024 * 1024;
 
 export type ParsedFeed = {
   title: string;
@@ -47,7 +50,7 @@ export type ParsedItem = {
   publishedAt?: Date;
 };
 
-function normalizeUrl(url: string): string {
+export function normalizeFeedUrl(url: string): string {
   const trimmed = url.trim();
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
   return `https://${trimmed}`;
@@ -492,24 +495,17 @@ async function fetchFullArticle(link: string): Promise<FetchedArticle | undefine
   if (url.protocol !== "http:" && url.protocol !== "https:") return undefined;
 
   try {
-    const response = await fetch(url, {
+    const { text: html, response, finalUrl } = await fetchPublicText(url.href, {
+      timeoutMs: ARTICLE_FETCH_TIMEOUT_MS,
+      maxBytes: ARTICLE_FETCH_MAX_BYTES,
       headers: {
         Accept: "text/html,application/xhtml+xml",
         "User-Agent": "RSS-Reader/1.0 (+full-article-fetch)",
       },
-      redirect: "follow",
-      signal: AbortSignal.timeout(ARTICLE_FETCH_TIMEOUT_MS),
     });
-    if (!response.ok) return undefined;
     const contentType = response.headers.get("content-type") ?? "";
     if (contentType && !/text\/html|application\/xhtml\+xml/i.test(contentType)) return undefined;
-    const contentLength = Number(response.headers.get("content-length") ?? 0);
-    if (contentLength > ARTICLE_FETCH_MAX_BYTES) return undefined;
 
-    const html = await response.text();
-    if (new TextEncoder().encode(html).byteLength > ARTICLE_FETCH_MAX_BYTES) return undefined;
-
-    const finalUrl = response.url || url.href;
     const dom = new JSDOM(html, { url: finalUrl });
     const sourceCodeBlocks = extractSourceCodeBlocks(dom.window.document);
     const imageUrl = extractMetadataImage(dom.window.document, finalUrl);
@@ -555,8 +551,20 @@ async function enrichWithFullArticles(items: ParsedItem[]): Promise<ParsedItem[]
 }
 
 export async function fetchFeed(rawUrl: string): Promise<ParsedFeed> {
-  const url = normalizeUrl(rawUrl);
-  const parsed = await parser.parseURL(url);
+  const url = normalizeFeedUrl(rawUrl);
+  const { text, response, finalUrl } = await fetchPublicText(url, {
+    timeoutMs: FEED_FETCH_TIMEOUT_MS,
+    maxBytes: FEED_FETCH_MAX_BYTES,
+    headers: {
+      Accept: "application/rss+xml, application/atom+xml, application/xml, text/xml, text/plain;q=0.8",
+      "User-Agent": "RSS-Reader/1.0",
+    },
+  });
+  const contentType = (response.headers.get("content-type") ?? "").toLowerCase();
+  if (contentType && !/rss|atom|xml|text\/plain/i.test(contentType)) {
+    throw new Error("The URL did not return an RSS or Atom feed");
+  }
+  const parsed = await parser.parseString(text);
   const items: ParsedItem[] = (parsed.items ?? []).map((raw: unknown, i: number) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- rss-parser customFields shape is dynamic
     const item = raw as Record<string, any>;
@@ -570,12 +578,12 @@ export async function fetchFeed(rawUrl: string): Promise<ParsedFeed> {
     // is the last resort, like Feeder's content fallback chain.
     const rawHtml: string | undefined =
       item["content:encoded"] ?? item.content ?? item.summary ?? mediaDescription;
-    const content = rawHtml ? sanitizeArticleHtml(rawHtml, link ?? url) : undefined;
+    const content = rawHtml ? sanitizeArticleHtml(rawHtml, link ?? finalUrl) : undefined;
     // Body fallback resolves against the article link, feed candidates
     // against the feed URL — same split as Feeder's feedBaseUrl/linkToHtml.
-    const thumbnail = resolveItemThumbnail(item, rawHtml, url, link ?? url);
+    const thumbnail = resolveItemThumbnail(item, rawHtml, finalUrl, link ?? finalUrl);
     return {
-      guid: item.guid ?? item.id ?? link ?? `${url}#${i}`,
+      guid: item.guid ?? item.id ?? link ?? `${finalUrl}#${i}`,
       title: item.title ?? "(untitled)",
       link,
       snippet: (item.contentSnippet ?? item["content:encodedSnippet"] ?? item.summary)?.slice(0, 500),
@@ -589,7 +597,7 @@ export async function fetchFeed(rawUrl: string): Promise<ParsedFeed> {
   });
   await enrichWithFullArticles(items);
   return {
-    title: parsed.title ?? new URL(url).hostname,
+    title: parsed.title ?? new URL(finalUrl).hostname,
     siteUrl: parsed.link,
     description: parsed.description,
     items,

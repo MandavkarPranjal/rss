@@ -90,9 +90,13 @@ export const feed = pgTable("feed", {
   siteUrl: text("site_url"),
   description: text("description"),
   lastFetchedAt: timestamp("last_fetched_at"),
+  lastFetchError: text("last_fetch_error"),
+  fetchFailureCount: integer("fetch_failure_count").notNull().default(0),
+  nextFetchAt: timestamp("next_fetch_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (t) => [
   index("feed_user_id_idx").on(t.userId),
+  uniqueIndex("feed_user_url_uidx").on(t.userId, t.url),
 ]);
 
 export const article = pgTable("article", {

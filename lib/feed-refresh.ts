@@ -1,4 +1,5 @@
-import { eq, sql } from "drizzle-orm";
+import { eq, isNull, lte, or, sql } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
 import { db } from "./db";
 import { article, feed } from "./db/schema";
 import { fetchFeed } from "./rss";
@@ -10,7 +11,7 @@ async function ingestItems(
   updateExistingContent = false,
 ) {
   const values = items.slice(0, 100).map((item) => ({
-    id: `art_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`,
+    id: `art_${randomUUID()}`,
     feedId,
     userId,
     guid: item.guid,
@@ -52,23 +53,69 @@ async function ingestItems(
   return result.length;
 }
 
-export async function refreshFeed(feedId: string) {
+const REFRESH_INTERVAL_MS = 60 * 60 * 1000;
+const MAX_FAILURE_BACKOFF_MS = 24 * 60 * 60 * 1000;
+
+function errorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : "Feed refresh failed";
+  return message.slice(0, 500);
+}
+
+export async function refreshFeed(feedId: string, options: { force?: boolean } = {}) {
   const [currentFeed] = await db.select().from(feed).where(eq(feed.id, feedId)).limit(1);
   if (!currentFeed) return null;
 
-  const parsed = await fetchFeed(currentFeed.url);
-  const newArticles = await ingestItems(currentFeed.userId, currentFeed.id, parsed.items, true);
-  await db
-    .update(feed)
-    .set({ lastFetchedAt: new Date(), title: parsed.title })
-    .where(eq(feed.id, currentFeed.id));
+  if (!options.force && currentFeed.nextFetchAt && currentFeed.nextFetchAt > new Date()) {
+    return { newArticles: 0, title: currentFeed.title, skipped: true };
+  }
 
-  return { newArticles, title: parsed.title };
+  try {
+    const parsed = await fetchFeed(currentFeed.url);
+    const newArticles = await ingestItems(currentFeed.userId, currentFeed.id, parsed.items, true);
+    await db
+      .update(feed)
+      .set({
+        lastFetchedAt: new Date(),
+        lastFetchError: null,
+        fetchFailureCount: 0,
+        nextFetchAt: new Date(Date.now() + REFRESH_INTERVAL_MS),
+        title: parsed.title,
+        siteUrl: parsed.siteUrl,
+        description: parsed.description,
+      })
+      .where(eq(feed.id, currentFeed.id));
+
+    return { newArticles, title: parsed.title, skipped: false };
+  } catch (error) {
+    const failureCount = currentFeed.fetchFailureCount + 1;
+    const backoff = Math.min(
+      REFRESH_INTERVAL_MS * 2 ** Math.min(failureCount - 1, 5),
+      MAX_FAILURE_BACKOFF_MS,
+    );
+    await db
+      .update(feed)
+      .set({
+        lastFetchError: errorMessage(error),
+        fetchFailureCount: failureCount,
+        nextFetchAt: new Date(Date.now() + backoff),
+      })
+      .where(eq(feed.id, currentFeed.id));
+    throw error;
+  }
 }
 
 export async function refreshAllFeeds() {
-  const feeds = await db.select({ id: feed.id }).from(feed);
-  const results = await Promise.allSettled(feeds.map((currentFeed) => refreshFeed(currentFeed.id)));
+  const now = new Date();
+  const feeds = await db
+    .select({ id: feed.id })
+    .from(feed)
+    .where(or(isNull(feed.nextFetchAt), lte(feed.nextFetchAt, now)));
+  const results: PromiseSettledResult<Awaited<ReturnType<typeof refreshFeed>>>[] = [];
+  const concurrency = 4;
+  for (let start = 0; start < feeds.length; start += concurrency) {
+    const batch = feeds.slice(start, start + concurrency);
+    results.push(...(await Promise.allSettled(batch.map(({ id }) => refreshFeed(id)))));
+  }
   return {
     feeds: feeds.length,
     refreshed: results.filter((result) => result.status === "fulfilled").length,

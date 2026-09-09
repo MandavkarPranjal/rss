@@ -1,19 +1,16 @@
 import { Elysia, t } from "elysia";
+import { randomUUID } from "node:crypto";
 import { and, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import { auth } from "./auth";
 import { db } from "./db";
 import { article, feed } from "./db/schema";
-import { fetchFeed } from "./rss";
+import { fetchFeed, normalizeFeedUrl } from "./rss";
 import { refreshFeed } from "./feed-refresh";
 
 async function requireUser(request: Request) {
   const session = await auth.api.getSession({ headers: request.headers });
   if (!session?.user) throw new Error("UNAUTHORIZED");
   return session.user;
-}
-
-function newId(prefix: string) {
-  return `${prefix}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 }
 
 export const rssApi = new Elysia({ prefix: "/api/rss" })
@@ -47,19 +44,28 @@ export const rssApi = new Elysia({ prefix: "/api/rss" })
     "/feeds",
     async ({ request, body }) => {
       const user = await requireUser(request);
-      const parsed = await fetchFeed(body.url);
-      const feedId = newId("feed");
+      const feedUrl = normalizeFeedUrl(body.url);
+      const existing = await db
+        .select({ id: feed.id })
+        .from(feed)
+        .where(and(eq(feed.userId, user.id), eq(feed.url, feedUrl)))
+        .limit(1);
+      if (existing.length > 0) {
+        return Response.json({ error: "You already follow this feed" }, { status: 409 });
+      }
+      const parsed = await fetchFeed(feedUrl);
+      const feedId = `feed_${randomUUID()}`;
       await db.insert(feed).values({
         id: feedId,
         userId: user.id,
-        url: body.url.trim(),
+        url: feedUrl,
         title: parsed.title,
         siteUrl: parsed.siteUrl,
         description: parsed.description,
         lastFetchedAt: new Date(),
       });
       const inserted = await db.insert(article).values(parsed.items.slice(0, 100).map((item) => ({
-        id: newId("art"),
+        id: `art_${randomUUID()}`,
         feedId,
         userId: user.id,
         guid: item.guid,
@@ -94,7 +100,7 @@ export const rssApi = new Elysia({ prefix: "/api/rss" })
       .where(and(eq(feed.id, params.id), eq(feed.userId, user.id)))
       .limit(1);
     if (!f) return Response.json({ error: "Feed not found" }, { status: 404 });
-    const result = await refreshFeed(f.id);
+    const result = await refreshFeed(f.id, { force: true });
     return { refreshed: true, newArticles: result?.newArticles ?? 0 };
   })
 
