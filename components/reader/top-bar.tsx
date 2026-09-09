@@ -65,9 +65,10 @@ export default function TopBar({ onOpenFeeds }: { onOpenFeeds: () => void }) {
             <GearSix size={14} weight="bold" /> <span className="hidden sm:inline">Settings</span>
           </Link>
           <button
+            aria-label="Sign out"
             onClick={async () => {
-              await authClient.signOut();
-              router.replace("/sign-in");
+              const { error } = await authClient.signOut();
+              if (!error) router.replace("/sign-in");
             }}
             className="inline-flex items-center gap-1.5 rounded-[6px] border border-[#EAEAEA] px-2.5 py-1.5 text-[13px] transition hover:bg-[#F7F6F3] active:scale-[0.98] dark:border-white/10 dark:hover:bg-white/5"
           >

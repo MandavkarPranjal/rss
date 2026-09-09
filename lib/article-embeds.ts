@@ -3,6 +3,43 @@ export type VideoEmbed = {
   title: string;
 };
 
+const EMBED_IFRAME_ALLOW =
+  "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";
+
+/** Apply the shared iframe policy to a known-safe video embed. */
+export function configureEmbedIframe(
+  frame: HTMLIFrameElement,
+  embed: VideoEmbed,
+  title?: string | null,
+): void {
+  frame.setAttribute("src", embed.src);
+  frame.setAttribute("title", title || embed.title);
+  frame.setAttribute("loading", "lazy");
+  frame.setAttribute("allow", EMBED_IFRAME_ALLOW);
+  frame.setAttribute("allowfullscreen", "true");
+}
+
+/** Link-out card for embeds browsers refuse to frame. */
+export function buildEmbedFallback(
+  document: Document,
+  url: string,
+  title: string | null,
+): HTMLDivElement {
+  const box = document.createElement("div");
+  box.setAttribute("class", "article-embed");
+  const label = document.createElement("p");
+  label.setAttribute("class", "article-embed-title");
+  label.textContent = title?.trim() || "Interactive content";
+  const link = document.createElement("a");
+  link.setAttribute("class", "article-embed-link");
+  link.setAttribute("href", url);
+  link.setAttribute("target", "_blank");
+  link.setAttribute("rel", "noreferrer");
+  link.textContent = "Open interactive content";
+  box.append(label, link);
+  return box;
+}
+
 function isAllowedHost(hostname: string, hosts: string[]) {
   const host = hostname.toLowerCase();
   return hosts.some((allowed) => host === allowed || host.endsWith(`.${allowed}`));
@@ -115,4 +152,26 @@ export function getSafeIframeSrc(srcValue: string, baseUrl?: string): VideoEmbed
   if (video) return video;
 
   return undefined;
+}
+
+/** Sanitize an iframe in place, replacing unsupported demos with a link-out. */
+export function sanitizeIframe(
+  frame: HTMLIFrameElement,
+  document: Document,
+  baseUrl?: string,
+): void {
+  const src = frame.getAttribute("src") ?? "";
+  const embed = getSafeIframeSrc(src, baseUrl);
+  if (embed) {
+    configureEmbedIframe(frame, embed, frame.getAttribute("title"));
+    return;
+  }
+
+  const demoUrl = getSameOriginIframeUrl(src, baseUrl);
+  if (demoUrl) {
+    frame.replaceWith(buildEmbedFallback(document, demoUrl, frame.getAttribute("title")));
+    return;
+  }
+
+  frame.remove();
 }

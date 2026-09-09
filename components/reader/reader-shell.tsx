@@ -1,18 +1,23 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { X } from "@phosphor-icons/react";
 import { useSession } from "@/lib/auth-client";
 import FeedSidebar from "./feed-sidebar";
 import { useRssStore } from "./rss-store";
 import TopBar from "./top-bar";
 
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 export default function ReaderShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const { data: session, isPending } = useSession();
   const { feedsError } = useRssStore();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const drawerPanelRef = useRef<HTMLDivElement>(null);
+  const drawerRestoreFocusRef = useRef<Element | null>(null);
 
   useEffect(() => {
     if (!isPending && !session) router.replace("/sign-in");
@@ -23,12 +28,61 @@ export default function ReaderShell({ children }: { children: ReactNode }) {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        document.querySelector<HTMLInputElement>('input[aria-label="Search articles"]')?.focus();
+        // Two inputs share this label (desktop `md:block`, mobile `md:hidden`):
+        // `querySelector` always returns the desktop one, which is
+        // `display: none` below the md breakpoint, so focus would vanish.
+        const inputs = Array.from(
+          document.querySelectorAll<HTMLInputElement>('input[aria-label="Search articles"]'),
+        );
+        (inputs.find((el) => el.offsetParent !== null) ?? inputs[0])?.focus();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // Mobile feeds drawer as an accessible modal: Escape closes (like the
+  // settings modal), scroll locks, focus moves in on open, Tab is trapped
+  // inside, and focus returns to the trigger on close.
+  useEffect(() => {
+    if (!drawerOpen) return;
+    drawerRestoreFocusRef.current = document.activeElement;
+    const panel = drawerPanelRef.current;
+    panel
+      ?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR)
+      ?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setDrawerOpen(false);
+        return;
+      }
+      if (e.key !== "Tab" || !panel) return;
+      const items = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
+        (el) => el.offsetParent !== null || el === document.activeElement,
+      );
+      if (items.length === 0) {
+        e.preventDefault();
+        return;
+      }
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+      (drawerRestoreFocusRef.current as HTMLElement | null)?.focus?.();
+    };
+  }, [drawerOpen]);
 
   if (isPending || !session) {
     return (
@@ -56,14 +110,15 @@ export default function ReaderShell({ children }: { children: ReactNode }) {
       </div>
 
       {drawerOpen && (
-        <div
-          className="fixed inset-0 z-50 lg:hidden"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) setDrawerOpen(false);
-          }}
-        >
-          <div className="absolute inset-0 bg-black/30" />
-          <div className="absolute inset-y-0 left-0 flex w-72 flex-col bg-[#F7F6F3] shadow-xl dark:bg-[#232220]">
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <div className="absolute inset-0 bg-black/30" onMouseDown={() => setDrawerOpen(false)} />
+          <div
+            ref={drawerPanelRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Feeds"
+            className="absolute inset-y-0 left-0 flex w-72 flex-col bg-[#F7F6F3] shadow-xl dark:bg-[#232220]"
+          >
             <div className="flex justify-end p-2">
               <button
                 onClick={() => setDrawerOpen(false)}

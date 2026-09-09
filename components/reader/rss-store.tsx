@@ -20,9 +20,11 @@ type RssStore = {
   totalUnread: number;
   loadFeeds: () => void;
   feedsError: string;
-  setFeedsError: (msg: string) => void;
+  setFeedsError: React.Dispatch<React.SetStateAction<string>>;
   articlesCache: Record<string, Article[]>;
   setArticlesCache: React.Dispatch<React.SetStateAction<Record<string, Article[]>>>;
+  articlesError: Record<string, string>;
+  setArticlesError: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   patchCachedArticle: (id: string, patch: Partial<Article>) => void;
   invalidateArticlesCache: () => void;
   revalidateTick: number;
@@ -36,6 +38,10 @@ type RssStore = {
 };
 
 const RssContext = createContext<RssStore | null>(null);
+const EMPTY_FEEDS: Feed[] = [];
+const EMPTY_ARTICLES_CACHE: Record<string, Article[]> = {};
+const EMPTY_ARTICLES_ERROR: Record<string, string> = {};
+const EMPTY_SEEN_IDS = new Set<string>();
 
 export function RssStoreProvider({ children }: { children: ReactNode }) {
   const { data: session, isPending } = useSession();
@@ -44,19 +50,16 @@ export function RssStoreProvider({ children }: { children: ReactNode }) {
   const [feeds, setFeeds] = useState<Feed[]>([]);
   const [feedsError, setFeedsError] = useState("");
   const [articlesCache, setArticlesCache] = useState<Record<string, Article[]>>({});
+  const [articlesError, setArticlesError] = useState<Record<string, string>>({});
   const [revalidateTick, setRevalidateTick] = useState(0);
   const [seenIds, setSeenIds] = useState<Set<string>>(new Set());
   const fetchedTickRef = useRef<Record<string, number>>({});
   const inFlightRef = useRef<Map<string, Promise<unknown>>>(new Map());
-  const articlesCacheRef = useRef(articlesCache);
+  const [activeUserId, setActiveUserId] = useState<string | null>(null);
   // Current account id for stale-response guards. Updated in the
   // sessionUserId effect below so fetch callbacks can tell whether the
   // account changed while a request was in flight.
   const userIdRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    articlesCacheRef.current = articlesCache;
-  }, [articlesCache]);
 
   const loadFeeds = useCallback(() => {
     const userId = userIdRef.current;
@@ -66,6 +69,7 @@ export function RssStoreProvider({ children }: { children: ReactNode }) {
         // never let the previous account's response overwrite the new list.
         if (userIdRef.current !== userId) return;
         setFeeds(data);
+        setFeedsError("");
       })
       .catch((e) => {
         if (userIdRef.current !== userId) return;
@@ -76,6 +80,7 @@ export function RssStoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (userIdRef.current === sessionUserId) return;
     userIdRef.current = sessionUserId;
+    setActiveUserId(sessionUserId);
     // The account changed (including sign-out) while the provider stayed
     // mounted: drop all user-scoped state so the next account never sees the
     // previous account's feeds or articles. Bumping revalidateTick forces the
@@ -84,6 +89,7 @@ export function RssStoreProvider({ children }: { children: ReactNode }) {
     setFeeds([]);
     setFeedsError("");
     setArticlesCache({});
+    setArticlesError({});
     setSeenIds(new Set());
     fetchedTickRef.current = {};
     inFlightRef.current.clear();
@@ -91,7 +97,15 @@ export function RssStoreProvider({ children }: { children: ReactNode }) {
     if (sessionUserId) loadFeeds();
   }, [sessionUserId, loadFeeds]);
 
-  // Keep the cache ref mirror for fetch callbacks (no cascading renders).
+  // The session can change during a render, before the reset effect above has
+  // run. Do not expose the previous account's user-scoped data during that
+  // transition.
+  const storeReady = activeUserId === sessionUserId;
+  const visibleFeeds = storeReady ? feeds : EMPTY_FEEDS;
+  const visibleFeedsError = storeReady ? feedsError : "";
+  const visibleArticlesCache = storeReady ? articlesCache : EMPTY_ARTICLES_CACHE;
+  const visibleArticlesError = storeReady ? articlesError : EMPTY_ARTICLES_ERROR;
+  const visibleSeenIds = storeReady ? seenIds : EMPTY_SEEN_IDS;
 
   const markSeen = useCallback((rows: Article[]) => {
     setSeenIds((prev) => {
@@ -125,49 +139,59 @@ export function RssStoreProvider({ children }: { children: ReactNode }) {
 
   const invalidateArticlesCache = useCallback(() => {
     setArticlesCache({});
+    setArticlesError({});
     fetchedTickRef.current = {};
     inFlightRef.current.clear();
+    // The `useArticles` fetch effect doesn't depend on the cache contents, so
+    // wiping it alone would leave the current view stuck on its loading
+    // skeleton (articlesCache[key] === undefined) with nothing re-triggering
+    // the fetch. Bumping the tick forces a refetch; the effect cleanup also
+    // cancels the orphaned run so a stale flight can't repopulate the cache.
+    setRevalidateTick((t) => t + 1);
   }, []);
 
   const revalidateCurrent = useCallback(() => setRevalidateTick((t) => t + 1), []);
 
   const totalUnread = useMemo(
-    () => feeds.reduce((n, f) => n + (f.unreadCount ?? 0), 0),
-    [feeds],
+    () => visibleFeeds.reduce((n, f) => n + (f.unreadCount ?? 0), 0),
+    [visibleFeeds],
   );
 
   const value = useMemo<RssStore>(
     () => ({
-      feeds,
+      feeds: visibleFeeds,
       setFeeds,
       totalUnread,
       loadFeeds,
-      feedsError,
+      feedsError: visibleFeedsError,
       setFeedsError,
-      articlesCache,
+      articlesCache: visibleArticlesCache,
       setArticlesCache,
       patchCachedArticle,
+      articlesError: visibleArticlesError,
+      setArticlesError,
       invalidateArticlesCache,
       revalidateTick,
       revalidateCurrent,
       fetchedTickRef,
       inFlightRef,
-      seenIds,
+      seenIds: visibleSeenIds,
       markSeen,
       sessionUserId,
       authPending: isPending,
     }),
     [
-      feeds,
+      visibleFeeds,
       totalUnread,
       loadFeeds,
-      feedsError,
-      articlesCache,
+      visibleFeedsError,
+      visibleArticlesCache,
       patchCachedArticle,
+      visibleArticlesError,
       invalidateArticlesCache,
       revalidateTick,
       revalidateCurrent,
-      seenIds,
+      visibleSeenIds,
       markSeen,
       sessionUserId,
       isPending,

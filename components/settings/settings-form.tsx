@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { EnvelopeSimple, Fingerprint, Key, Plus, Trash } from "@phosphor-icons/react";
 import { authClient, useSession } from "@/lib/auth-client";
 
@@ -41,7 +41,7 @@ function FieldSuccess({ message }: { message: string }) {
 }
 
 export default function SettingsForm({ autoLoadPasskeys = true }: { autoLoadPasskeys?: boolean }) {
-  const { data: session } = useSession();
+  const { data: session, refetch } = useSession();
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -62,20 +62,28 @@ export default function SettingsForm({ autoLoadPasskeys = true }: { autoLoadPass
   const [addingPasskey, setAddingPasskey] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  const loadSeqRef = useRef(0);
+
   const loadPasskeys = useCallback(async () => {
+    // Guard against out-of-order responses: the mount load and the post-add
+    // reload can overlap, and the slower (stale) one must not overwrite the
+    // fresher list — otherwise the newly added passkey disappears until reload.
+    const seq = ++loadSeqRef.current;
     setPasskeysLoading(true);
     setPasskeysError("");
     try {
       const res = await authClient.passkey.listUserPasskeys();
+      if (seq !== loadSeqRef.current) return;
       if (res.error) {
         setPasskeysError(res.error.message ?? "Could not load passkeys");
       } else {
         setPasskeys((res.data ?? []) as Passkey[]);
       }
     } catch (e) {
+      if (seq !== loadSeqRef.current) return;
       setPasskeysError(e instanceof Error ? e.message : "Could not load passkeys");
     } finally {
-      setPasskeysLoading(false);
+      if (seq === loadSeqRef.current) setPasskeysLoading(false);
     }
   }, []);
 
@@ -145,7 +153,7 @@ export default function SettingsForm({ autoLoadPasskeys = true }: { autoLoadPass
           "Email update requested. It applies immediately unless verification is required — then check your new inbox to confirm.",
         );
         setNewEmail("");
-        await authClient.getSession({ query: { disableCookieCache: true } });
+        await refetch();
       }
     } catch (e) {
       setEmailError(e instanceof Error ? e.message : "Could not change email");

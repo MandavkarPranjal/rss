@@ -22,11 +22,12 @@ export default function ArticleList({ feedId, filter, heading }: Props) {
     loadFeeds,
     seenIds,
     setFeedsError,
+    setArticlesCache,
   } = useRssStore();
   const [query] = useSearchQuery();
   const [, setArticleId] = useSelectedArticleId();
   const [selectedId] = useSelectedArticleId();
-  const { articles, loading } = useArticles(feedId, filter, query.trim());
+  const { articles, loading, error, retry } = useArticles(feedId, filter, query.trim());
   const listRef = useRef<HTMLDivElement>(null);
 
   const activeFeed = feeds.find((f) => f.id === feedId) ?? null;
@@ -55,12 +56,9 @@ export default function ArticleList({ feedId, filter, heading }: Props) {
   }, [articles]);
 
   const openArticle = async (a: Article) => {
-    await setArticleId(a.id);
-    if (!a.content) {
-      api(`/api/rss/articles/${a.id}`)
-        .then((full) => patchCachedArticle(a.id, full))
-        .catch(() => {});
-    }
+    // Update the cache before selecting: ArticleReader also marks unread
+    // rows read on open, so selecting first lets it win the race and this
+    // handler then decrements + PATCHes a second time.
     if (!a.isRead) {
       patchCachedArticle(a.id, { isRead: true });
       setFeeds((prev) =>
@@ -68,13 +66,12 @@ export default function ArticleList({ feedId, filter, heading }: Props) {
           f.id === a.feedId ? { ...f, unreadCount: Math.max(0, (f.unreadCount ?? 1) - 1) } : f,
         ),
       );
-      try {
-        await api(`/api/rss/articles/${a.id}`, {
-          method: "PATCH",
-          body: JSON.stringify({ isRead: true }),
-        });
-      } catch {}
+      api(`/api/rss/articles/${a.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ isRead: true }),
+      }).catch(() => {});
     }
+    await setArticleId(a.id);
   };
 
   const toggleStar = async (a: Article) => {
@@ -85,38 +82,45 @@ export default function ArticleList({ feedId, filter, heading }: Props) {
         method: "PATCH",
         body: JSON.stringify({ isStarred: next }),
       });
-    } catch {}
+    } catch {
+      patchCachedArticle(a.id, { isStarred: a.isStarred });
+    }
   };
 
   const markAllRead = async () => {
-    const scopeFeed = feedId;
+    // Scope to the current view (feed + filter + search): the endpoint
+    // used to mark every unread article in scope, so a starred/searched
+    // list wiped unshown stories. Mark only the displayed unread IDs.
+    const unreadShown = articles.filter((a) => !a.isRead);
+    if (unreadShown.length === 0) return;
+    const ids = new Set(unreadShown.map((a) => a.id));
+    const perFeed = new Map<string, number>();
+    for (const a of unreadShown) perFeed.set(a.feedId, (perFeed.get(a.feedId) ?? 0) + 1);
     setFeeds((prev) =>
-      prev.map((f) => (!scopeFeed || f.id === scopeFeed ? { ...f, unreadCount: 0 } : f)),
+      prev.map((f) => {
+        const n = perFeed.get(f.id);
+        return n ? { ...f, unreadCount: Math.max(0, (f.unreadCount ?? n) - n) } : f;
+      }),
     );
-    patchScopeRead(scopeFeed);
+    setArticlesCache((prev) => {
+      const next: Record<string, Article[]> = {};
+      for (const [k, list] of Object.entries(prev)) {
+        next[k] = list.map((x) => (ids.has(x.id) ? { ...x, isRead: true } : x));
+      }
+      return next;
+    });
     try {
       await api("/api/rss/articles/mark-all-read", {
         method: "POST",
-        body: JSON.stringify(scopeFeed ? { feedId: scopeFeed } : {}),
+        body: JSON.stringify(
+          feedId ? { feedId, articleIds: [...ids] } : { articleIds: [...ids] },
+        ),
       });
     } catch (e) {
       setFeedsError(e instanceof Error ? e.message : "Failed to mark all read");
     }
     revalidateCurrent();
     loadFeeds();
-  };
-
-  const { setArticlesCache } = useRssStore();
-  const patchScopeRead = (scopeFeed: string | null) => {
-    setArticlesCache((prev) => {
-      const next: Record<string, Article[]> = {};
-      for (const [k, list] of Object.entries(prev)) {
-        next[k] = list.map((x) =>
-          !scopeFeed || x.feedId === scopeFeed ? { ...x, isRead: true } : x,
-        );
-      }
-      return next;
-    });
   };
 
   return (
@@ -162,15 +166,18 @@ export default function ArticleList({ feedId, filter, heading }: Props) {
           return (
             <div
               key={a.id}
-              onClick={() => openArticle(a)}
               style={{ "--index": Math.min(i, 3) } as React.CSSProperties}
-              className={`${fresh ? "reveal" : ""} row-lift cursor-pointer border-b border-[#EAEAEA] px-5 py-4 dark:border-white/10 ${selected ? "bg-[#F7F6F3] dark:bg-white/5" : "hover:bg-[#FBFBFA] dark:hover:bg-white/[0.03]"} ${a.isRead ? "opacity-60" : ""}`}
+              className={`${fresh ? "reveal" : ""} row-lift border-b border-[#EAEAEA] px-5 py-4 dark:border-white/10 ${selected ? "bg-[#F7F6F3] dark:bg-white/5" : "hover:bg-[#FBFBFA] dark:hover:bg-white/[0.03]"} ${a.isRead ? "opacity-60" : ""}`}
             >
               <div className="flex items-start gap-3">
                 {!a.isRead && (
                   <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#1F6C9F]" aria-label="Unread" />
                 )}
-                <div className="min-w-0 flex-1">
+                <button
+                  onClick={() => openArticle(a)}
+                  aria-current={selected ? true : undefined}
+                  className="min-w-0 flex-1 rounded-md text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1F6C9F]"
+                >
                   <p className="truncate font-mono text-[11px] uppercase tracking-[0.08em] text-[#787774]">
                     {a.feedTitle ?? "Feed"} · {timeAgo(a.publishedAt)}
                   </p>
@@ -182,12 +189,9 @@ export default function ArticleList({ feedId, filter, heading }: Props) {
                   {a.snippet && (
                     <p className="mt-1 line-clamp-2 text-[13px] leading-relaxed text-[#787774]">{a.snippet}</p>
                   )}
-                </div>
+                </button>
                 <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggleStar(a);
-                  }}
+                  onClick={() => toggleStar(a)}
                   title={a.isStarred ? "Unstar" : "Star"}
                   aria-label={a.isStarred ? "Unstar article" : "Star article"}
                   className="shrink-0 rounded-md p-1 transition hover:bg-[#F7F6F3] active:scale-[0.95] dark:hover:bg-white/10"
@@ -202,7 +206,7 @@ export default function ArticleList({ feedId, filter, heading }: Props) {
             </div>
           );
         })}
-        {articles.length === 0 && !loading && (
+        {articles.length === 0 && !loading && !error && (
           <div className="px-5 py-12 text-center">
             <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl border border-[#EAEAEA] bg-[#F7F6F3] dark:border-white/10 dark:bg-white/5">
               <Checks size={20} weight="bold" className="text-[#346538]" />
@@ -212,6 +216,18 @@ export default function ArticleList({ feedId, filter, heading }: Props) {
               Nothing {filter === "starred" ? "starred yet" : "left to read"}. New stories will land here
               quietly.
             </p>
+          </div>
+        )}
+        {articles.length === 0 && !loading && error && (
+          <div className="px-5 py-12 text-center">
+            <p className="font-editorial mt-4 text-lg">Couldn&apos;t load stories</p>
+            <p className="mx-auto mt-1 max-w-55 text-[13px] leading-relaxed text-[#787774]">{error}</p>
+            <button
+              onClick={retry}
+              className="mt-4 inline-flex items-center gap-1 rounded-[6px] border border-[#EAEAEA] bg-white px-3 py-1.5 text-[13px] transition hover:bg-[#F7F6F3] active:scale-[0.98] dark:border-white/10 dark:bg-transparent dark:hover:bg-white/5"
+            >
+              Try again
+            </button>
           </div>
         )}
       </div>
