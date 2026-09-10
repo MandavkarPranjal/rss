@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { useEffect, useRef } from "react";
-import { buildMuxPlayer, configureEmbedIframe, getVideoEmbed, sanitizeIframe } from "@/lib/article-embeds";
+import { buildMuxPlayer, configureEmbedIframe, getVideoEmbed, sanitizeIframe, sanitizeMuxPlayers } from "@/lib/article-embeds";
 import { useMuxOverrideAll } from "@/lib/playback-prefs";
 
 const SHIKI_LANGUAGES = [
@@ -40,7 +40,9 @@ let muxPlayerPromise: Promise<unknown> | null = null;
 /** Register the <mux-player> custom element (side-effectful, client only). */
 function ensureMuxPlayer() {
   muxPlayerPromise ??= import("@mux/mux-player").catch(() => {
-    // Videos stay as inert <mux-player> placeholders if the player fails to load.
+    // The light-DOM "Open video" fallback inside each <mux-player> stays
+    // visible when the custom element never upgrades, so content remains
+    // reachable even if this chunk fails to load.
     muxPlayerPromise = null;
   });
   return muxPlayerPromise;
@@ -216,6 +218,10 @@ function enhanceArticleHtml(html: string, baseUrl?: string, muxOverrideAll = fal
   document.querySelectorAll<HTMLIFrameElement>("iframe[src]").forEach((frame) => {
     sanitizeIframe(frame, document, baseUrl, { muxOverrideAll });
   });
+
+  // Repair stored <mux-player> elements written before the src/playback-id
+  // split fix and backfill the light-DOM fallback link.
+  sanitizeMuxPlayers(document);
 
   return document.body.innerHTML;
 }
