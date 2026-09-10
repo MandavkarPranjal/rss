@@ -11,6 +11,8 @@ export const env = createEnv({
     PASSKEY_ORIGIN: z.url().optional(),
     TRUSTED_ORIGINS: z.string().min(1).optional(),
     CRON_SECRET: z.string().min(1).optional(),
+    GITHUB_CLIENT_ID: z.string().min(1).optional(),
+    GITHUB_CLIENT_SECRET: z.string().min(1).optional(),
     NODE_ENV: z
       .enum(["development", "test", "production"])
       .default("development"),
@@ -29,6 +31,8 @@ export const env = createEnv({
     PASSKEY_ORIGIN: process.env.PASSKEY_ORIGIN,
     TRUSTED_ORIGINS: process.env.TRUSTED_ORIGINS,
     CRON_SECRET: process.env.CRON_SECRET,
+    GITHUB_CLIENT_ID: process.env.GITHUB_CLIENT_ID,
+    GITHUB_CLIENT_SECRET: process.env.GITHUB_CLIENT_SECRET,
     NODE_ENV: process.env.NODE_ENV,
     // NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
   },

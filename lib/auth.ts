@@ -9,19 +9,33 @@ export const auth = betterAuth({
   appName: "RSS Reader",
   database: drizzleAdapter(db, { provider: "pg" }),
   emailAndPassword: {
-    enabled: true,
-    minPasswordLength: 8,
-    requireEmailVerification: false,
-    // Mock email handlers for now — swap with Resend in production.
-    sendResetPassword: async ({ user, url }) => {
-      console.log(`[auth] password reset for ${user.email}: ${url}`);
-    },
+    enabled: false,
   },
   emailVerification: {
     sendOnSignUp: false,
     autoSignInAfterVerification: true,
     sendVerificationEmail: async ({ user, url }) => {
       console.log(`[auth] verify email for ${user.email}: ${url}`);
+    },
+  },
+  socialProviders: {
+    ...(env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET
+      ? {
+          github: {
+            clientId: env.GITHUB_CLIENT_ID,
+            clientSecret: env.GITHUB_CLIENT_SECRET,
+          },
+        }
+      : {}),
+  },
+  account: {
+    accountLinking: {
+      enabled: true,
+      trustedProviders: ["github"],
+      // Existing password accounts never verified email (verification was
+      // disabled), so don't block GitHub auto-link on local emailVerified.
+      // GitHub verifies emails itself.
+      requireLocalEmailVerified: false,
     },
   },
   plugins: [

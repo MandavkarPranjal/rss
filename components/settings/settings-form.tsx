@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { EnvelopeSimple, Fingerprint, Key, MonitorPlay, Plus, Trash } from "@phosphor-icons/react";
+import { useRouter } from "next/navigation";
+import { Fingerprint, MonitorPlay, Plus, SignOut, Trash, UserCircle } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import { authClient, useSession } from "@/lib/auth-client";
 import { setMuxOverrideAll, useMuxOverrideAll } from "@/lib/playback-prefs";
@@ -13,19 +14,16 @@ type Passkey = {
   aaguid?: string | null;
 };
 
-type SettingsSection = "password" | "email" | "passkeys" | "playback";
+type SettingsSection = "account" | "passkeys" | "playback";
 
 const settingsSections = [
-  ["password", "Password"],
-  ["email", "Email"],
+  ["account", "Account"],
   ["passkeys", "Passkeys"],
   ["playback", "Playback"],
 ] as const satisfies ReadonlyArray<readonly [SettingsSection, string]>;
 
 const inputCls =
   "w-full rounded-[6px] border border-[#EAEAEA] bg-[#FBFBFA] px-3 py-2 text-sm outline-none placeholder:text-[#787774] focus:border-[#111111] focus:bg-white dark:border-white/10 dark:bg-white/5 dark:focus:bg-transparent";
-
-const labelCls = "mb-1.5 block text-[13px] font-medium";
 
 function FieldError({ message }: { message: string }) {
   if (!message) return null;
@@ -39,32 +37,9 @@ function FieldError({ message }: { message: string }) {
   );
 }
 
-function FieldSuccess({ message }: { message: string }) {
-  if (!message) return null;
-  return (
-    <p
-      role="status"
-      className="rounded-[6px] bg-[#EDF3EC] px-3 py-2 text-[13px] text-[#346538] dark:bg-[#346538]/25 dark:text-[#B3D0B4]"
-    >
-      {message}
-    </p>
-  );
-}
-
 export default function SettingsForm({ autoLoadPasskeys = true }: { autoLoadPasskeys?: boolean }) {
-  const { data: session, refetch } = useSession();
-
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [passwordError, setPasswordError] = useState("");
-  const [passwordSuccess, setPasswordSuccess] = useState("");
-  const [passwordLoading, setPasswordLoading] = useState(false);
-
-  const [newEmail, setNewEmail] = useState("");
-  const [emailError, setEmailError] = useState("");
-  const [emailSuccess, setEmailSuccess] = useState("");
-  const [emailLoading, setEmailLoading] = useState(false);
+  const { data: session } = useSession();
+  const router = useRouter();
 
   const [passkeys, setPasskeys] = useState<Passkey[]>([]);
   const [passkeysLoading, setPasskeysLoading] = useState(false);
@@ -72,10 +47,10 @@ export default function SettingsForm({ autoLoadPasskeys = true }: { autoLoadPass
   const [passkeyName, setPasskeyName] = useState("");
   const [addingPasskey, setAddingPasskey] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [mobileSection, setMobileSection] = useState<SettingsSection>("password");
+  const [signingOut, setSigningOut] = useState(false);
+  const [mobileSection, setMobileSection] = useState<SettingsSection>("account");
   const mobileTabRefs = useRef<Record<SettingsSection, HTMLButtonElement | null>>({
-    password: null,
-    email: null,
+    account: null,
     passkeys: null,
     playback: null,
   });
@@ -141,80 +116,23 @@ export default function SettingsForm({ autoLoadPasskeys = true }: { autoLoadPass
     if (autoLoadPasskeys) void loadPasskeys();
   }, [autoLoadPasskeys, loadPasskeys]);
 
-  const submitPassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setPasswordError("");
-    setPasswordSuccess("");
-    if (newPassword.length < 8) {
-      setPasswordError("New password must be at least 8 characters.");
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      setPasswordError("New passwords do not match.");
-      return;
-    }
-    setPasswordLoading(true);
-    const request = authClient.changePassword({
-        currentPassword,
-        newPassword,
-        revokeOtherSessions: true,
-      }).then(({ error }) => {
-        if (error) throw new Error(error.message ?? "Could not change password");
-        setPasswordSuccess("Password changed. Other sessions were signed out.");
-        setCurrentPassword("");
-        setNewPassword("");
-        setConfirmPassword("");
-      });
+  const signOut = async () => {
+    setSigningOut(true);
+    const request = authClient.signOut().then(({ error }) => {
+      if (error) throw new Error(error.message ?? "Could not sign out");
+    });
     toast.promise(request, {
-      loading: "Changing password…",
-      success: "Password changed",
-      error: (error) => (error instanceof Error ? error.message : "Could not change password"),
+      loading: "Signing out…",
+      success: "Signed out",
+      error: (error) => (error instanceof Error ? error.message : "Could not sign out"),
     });
     try {
       await request;
-    } catch (e) {
-      setPasswordError(e instanceof Error ? e.message : "Could not change password");
+      router.replace("/sign-in");
+    } catch {
+      // Error is surfaced via toast; stay on the page.
     } finally {
-      setPasswordLoading(false);
-    }
-  };
-
-  const submitEmail = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setEmailError("");
-    setEmailSuccess("");
-    const trimmed = newEmail.trim();
-    if (!trimmed) {
-      setEmailError("Enter a new email address.");
-      return;
-    }
-    if (trimmed.toLowerCase() === session?.user.email.toLowerCase()) {
-      setEmailError("That is already your primary email.");
-      return;
-    }
-    setEmailLoading(true);
-    const request = authClient.changeEmail({
-        newEmail: trimmed,
-        callbackURL: "/",
-      }).then(async ({ error }) => {
-        if (error) throw new Error(error.message ?? "Could not change email");
-        setEmailSuccess(
-          "Email update requested. It applies immediately unless verification is required — then check your new inbox to confirm.",
-        );
-        setNewEmail("");
-        await refetch();
-      });
-    toast.promise(request, {
-      loading: "Updating email…",
-      success: "Email update requested",
-      error: (error) => (error instanceof Error ? error.message : "Could not change email"),
-    });
-    try {
-      await request;
-    } catch (e) {
-      setEmailError(e instanceof Error ? e.message : "Could not change email");
-    } finally {
-      setEmailLoading(false);
+      setSigningOut(false);
     }
   };
 
@@ -267,7 +185,7 @@ export default function SettingsForm({ autoLoadPasskeys = true }: { autoLoadPass
 
   return (
     <div className="space-y-5 sm:space-y-6">
-      <div className="grid grid-cols-4 gap-1 rounded-[6px] bg-[#F7F6F3] p-1 sm:hidden dark:bg-white/5" role="tablist" aria-label="Settings sections">
+      <div className="grid grid-cols-3 gap-1 rounded-[6px] bg-[#F7F6F3] p-1 sm:hidden dark:bg-white/5" role="tablist" aria-label="Settings sections">
         {settingsSections.map(([value, label]) => (
           <button
             key={value}
@@ -294,109 +212,43 @@ export default function SettingsForm({ autoLoadPasskeys = true }: { autoLoadPass
       </div>
 
       <section
-        id="settings-panel-password"
+        id="settings-panel-account"
         role="tabpanel"
-        aria-labelledby="settings-tab-password"
-        className={mobileSection === "password" ? "block sm:block" : "hidden sm:block"}
+        aria-labelledby="settings-tab-account"
+        className={mobileSection === "account" ? "block sm:block" : "hidden sm:block"}
       >
-        <h3 id="settings-password" className="flex items-center gap-1.5 text-sm font-medium">
-          <Key size={15} weight="bold" /> Change password
+        <h3 id="settings-account" className="flex items-center gap-1.5 text-sm font-medium">
+          <UserCircle size={15} weight="bold" /> Account
         </h3>
-        <form onSubmit={submitPassword} className="mt-2.5 space-y-2.5 sm:mt-3 sm:space-y-3">
-          <div>
-            <label htmlFor="settings-current-password" className={labelCls}>
-              Current password
-            </label>
-            <input
-              id="settings-current-password"
-              type="password"
-              autoComplete="current-password"
-              required
-              value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-              className={inputCls}
+        <div className="mt-2.5 flex items-center gap-3 rounded-[6px] border border-[#EAEAEA] px-3 py-2.5 sm:mt-3 dark:border-white/10">
+          {session?.user.image ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={session.user.image}
+              alt=""
+              className="h-9 w-9 shrink-0 rounded-full"
             />
-          </div>
-          <div>
-            <label htmlFor="settings-new-password" className={labelCls}>
-              New password
-            </label>
-            <input
-              id="settings-new-password"
-              type="password"
-              autoComplete="new-password"
-              required
-              minLength={8}
-              placeholder="Minimum 8 characters"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              className={inputCls}
-            />
-          </div>
-          <div>
-            <label htmlFor="settings-confirm-password" className={labelCls}>
-              Confirm new password
-            </label>
-            <input
-              id="settings-confirm-password"
-              type="password"
-              autoComplete="new-password"
-              required
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              className={inputCls}
-            />
-          </div>
-          <FieldError message={passwordError} />
-          <FieldSuccess message={passwordSuccess} />
-          <button
-            type="submit"
-            disabled={passwordLoading}
-            className="w-full rounded-[6px] bg-[#111111] py-2 text-sm font-medium text-white transition hover:bg-[#333333] active:scale-[0.98] disabled:opacity-50 dark:bg-[#ECECEA] dark:text-[#191918]"
-          >
-            {passwordLoading ? "Updating…" : "Update password"}
-          </button>
-        </form>
-      </section>
-
-      <section
-        id="settings-panel-email"
-        role="tabpanel"
-        aria-labelledby="settings-tab-email"
-        className={`${mobileSection === "email" ? "block" : "hidden"} border-t border-[#EAEAEA] pt-4 sm:block sm:pt-5 dark:border-white/10`}
-      >
-        <h3 id="settings-email" className="flex items-center gap-1.5 text-sm font-medium">
-          <EnvelopeSimple size={15} weight="bold" /> Primary email
-        </h3>
-        <p className="mt-1 text-[13px] text-[#787774]">
-          Currently{" "}
-          <span className="font-medium text-[#111111] dark:text-white">{session?.user.email}</span>
+          ) : (
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#F7F6F3] text-sm font-medium text-[#787774] dark:bg-white/5">
+              {(session?.user.name ?? session?.user.email ?? "?").charAt(0).toUpperCase()}
+            </span>
+          )}
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-medium">{session?.user.name ?? "Reader"}</span>
+            <span className="block truncate text-xs text-[#787774]">{session?.user.email}</span>
+          </span>
+        </div>
+        <p className="mt-2 text-[13px] text-[#787774]">
+          Signed in with GitHub or a passkey. There is no password to manage.
         </p>
-        <form onSubmit={submitEmail} className="mt-2.5 space-y-2.5 sm:mt-3 sm:space-y-3">
-          <div>
-            <label htmlFor="settings-new-email" className={labelCls}>
-              New email
-            </label>
-            <input
-              id="settings-new-email"
-              type="email"
-              required
-              placeholder="you@new-address.com"
-              value={newEmail}
-              onChange={(e) => setNewEmail(e.target.value)}
-              className={inputCls}
-            />
-          </div>
-          <FieldError message={emailError} />
-          <FieldSuccess message={emailSuccess} />
-          <button
-            type="submit"
-            disabled={emailLoading}
-            className="w-full rounded-[6px] border border-[#EAEAEA] py-2 text-sm font-medium transition hover:bg-[#F7F6F3] active:scale-[0.98] disabled:opacity-50 dark:border-white/10 dark:hover:bg-white/5"
-          >
-            {emailLoading ? "Updating…" : "Change email"}
-          </button>
-        </form>
+        <button
+          type="button"
+          onClick={signOut}
+          disabled={signingOut}
+          className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-[6px] border border-[#EAEAEA] py-2 text-sm transition hover:bg-[#F7F6F3] active:scale-[0.98] disabled:opacity-50 dark:border-white/10 dark:hover:bg-white/5"
+        >
+          <SignOut size={14} weight="bold" /> {signingOut ? "Signing out…" : "Sign out"}
+        </button>
       </section>
 
       <section
