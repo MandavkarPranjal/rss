@@ -2,7 +2,7 @@ import { Readability } from "@mozilla/readability";
 import { JSDOM } from "jsdom";
 import Parser from "rss-parser";
 import { configureEmbedIframe, getVideoEmbed, sanitizeIframe } from "./article-embeds";
-import { decodeEntities } from "./decode-entities";
+import { decodeEntities, decodeHtmlTextNodes } from "./decode-entities";
 import { fetchPublicText } from "./safe-fetch";
 
 const parser = new Parser({
@@ -92,7 +92,11 @@ function makeAbsoluteUrls(html: string, baseUrl: string): string {
   return document.body.innerHTML;
 }
 
-function sanitizeArticleHtml(html: string, baseUrl: string): string {  const dom = new JSDOM(`<body>${html}</body>`, { url: baseUrl });
+function sanitizeArticleHtml(html: string, baseUrl: string): string {  // Feeds frequently double-encode body text (`&amp;#8217;`), which a
+  // DOM round-trip preserves verbatim — decode text nodes first so new rows
+  // store (and render) the intended characters. Markup is untouched.
+  html = decodeHtmlTextNodes(html);
+  const dom = new JSDOM(`<body>${html}</body>`, { url: baseUrl });
   const document = dom.window.document;
 
   document.querySelectorAll<HTMLMetaElement>('meta[itemprop="contentUrl"]').forEach((metadata) => {
@@ -561,6 +565,33 @@ async function enrichWithFullArticles(items: ParsedItem[]): Promise<ParsedItem[]
   return items;
 }
 
+/**
+ * Snippets are rendered as plain text (article list) and as a text fallback
+ * in the reader when an article has no body. They must never contain markup:
+ * rss-parser's `contentSnippet` decodes `&lt;a href="javascript:..."&gt;` into
+ * a real tag, and the `summary` fallback is raw HTML. Decode first (feeds
+ * double-encode), then strip tags via textContent so the result is inert even
+ * if passed to `dangerouslySetInnerHTML` by a stale caller.
+ */
+function toPlainTextSnippet(value: string | null | undefined): string | undefined {
+  const decoded = decodeEntities(value ?? undefined);
+  if (!decoded) return undefined;
+  let text: string;
+  try {
+    // Keep word boundaries between block elements (`</p><p>` would otherwise
+    // concatenate to "helloworld" via textContent).
+    const spaced = decoded.replace(
+      /<\/?(?:h[1-6]|p|br|ul|ol|li|blockquote|section|table|tr|div)[^>]*>/gi,
+      " ",
+    );
+    text = new JSDOM(`<body>${spaced}</body>`).window.document.body.textContent ?? "";
+  } catch {
+    text = decoded.replace(/<(?:.|\n)*?>/gm, "");
+  }
+  text = text.replace(/\s+/g, " ").trim();
+  return text ? text.slice(0, 500) : undefined;
+}
+
 export async function fetchFeed(rawUrl: string): Promise<ParsedFeed> {
   const url = normalizeFeedUrl(rawUrl);
   const { text, response, finalUrl } = await fetchPublicText(url, {
@@ -602,7 +633,7 @@ export async function fetchFeed(rawUrl: string): Promise<ParsedFeed> {
       guid: item.guid ?? item.id ?? link ?? `${finalUrl}#${i}`,
       title: decodeEntities(item.title ?? "(untitled)"),
       link,
-      snippet: decodeEntities(rawSnippet ?? undefined)?.slice(0, 500) ?? undefined,
+      snippet: toPlainTextSnippet(typeof rawSnippet === "string" ? rawSnippet : undefined),
       content,
       author: decodeEntities(item.creator ?? item.author ?? undefined) ?? undefined,
       imageUrl: thumbnail.url,

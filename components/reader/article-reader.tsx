@@ -278,7 +278,14 @@ export default function ArticleReader({
             Permalink
           </Link>
         </div>
-        <ArticleContent html={article.content ?? article.snippet ?? ""} baseUrl={article.link ?? undefined} />
+        {article.content?.trim() ? (
+          <ArticleContent html={article.content} baseUrl={article.link ?? undefined} />
+        ) : article.snippet ? (
+          // Snippets are plain text — never feed them to dangerouslySetInnerHTML.
+          // React escapes this automatically, so feed-supplied markup (e.g. an
+          // escaped `<a href="javascript:...">`) stays inert.
+          <p className="reader-body mt-6 whitespace-pre-line">{article.snippet}</p>
+        ) : null}
       </div>
     </div>
   );

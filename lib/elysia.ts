@@ -1,10 +1,11 @@
 import { Elysia, t } from "elysia";
 import { randomUUID } from "node:crypto";
 import { and, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
+import { encodeHTML } from "entities";
 import { auth } from "./auth";
 import { db } from "./db";
 import { article, feed } from "./db/schema";
-import { decodeEntities } from "./decode-entities";
+import { decodeEntities, decodeHtmlTextNodes } from "./decode-entities";
 import { fetchFeed, normalizeFeedUrl } from "./rss";
 import { refreshFeed } from "./feed-refresh";
 
@@ -12,6 +13,51 @@ async function requireUser(request: Request) {
   const session = await auth.api.getSession({ headers: request.headers });
   if (!session?.user) throw new Error("UNAUTHORIZED");
   return session.user;
+}
+
+/**
+ * `entities` prefers terse WHATWG aliases (`&rsquor;`, `&mldr;`, ...) that
+ * feeds rarely emit — feed markup overwhelmingly uses the classic names
+ * (`&rsquo;`, `&hellip;`, ...). Rewrite the aliases so the named variant below
+ * matches real legacy storage.
+ */
+const CLASSIC_ENTITY_NAMES: Record<string, string> = {
+  "&rsquor;": "&rsquo;",
+  "&rdquor;": "&rdquo;",
+  "&ldquor;": "&bdquo;",
+  "&ddagger;": "&Dagger;",
+  "&bullet;": "&bull;",
+  "&mldr;": "&hellip;",
+};
+
+function classicEntityNames(encoded: string): string {
+  return encoded.replace(
+    /&(rsquor|rdquor|ldquor|ddagger|bullet|mldr);/g,
+    (match) => CLASSIC_ENTITY_NAMES[match] ?? match,
+  );
+}
+
+/**
+ * Legacy rows ingested before entity-decoding store raw entities
+ * (`It&#8217;s`) while reads display decoded text (`It's`). Searching the
+ * displayed text would miss those rows, so match the query in every plausible
+ * stored spelling: as typed, decoded, entity-named (both `entities` and
+ * classic spellings), decimal numeric, and hex numeric. Each variant encodes
+ * the whole query at once, so multi-entity queries (e.g. `&` plus `’`) match
+ * too. Single-encoded forms cover real legacy storage (rss-parser already
+ * decoded one layer on ingest, so double-encoded forms don't occur).
+ * Plain-ASCII queries dedupe to the original single predicate.
+ */
+function encodedQueryVariants(query: string): string[] {
+  const decoded = decodeEntities(query);
+  const named = encodeHTML(decoded);
+  const decimal = Array.from(decoded, (ch) =>
+    /^[\x20-\x7E]$/.test(ch) ? ch : `&#${ch.codePointAt(0)};`,
+  ).join("");
+  const hex = Array.from(decoded, (ch) =>
+    /^[\x20-\x7E]$/.test(ch) ? ch : `&#x${(ch.codePointAt(0) ?? 0).toString(16)};`,
+  ).join("");
+  return [...new Set([query, decoded, named, classicEntityNames(named), decimal, hex])];
 }
 
 export const rssApi = new Elysia({ prefix: "/api/rss" })
@@ -122,8 +168,10 @@ export const rssApi = new Elysia({ prefix: "/api/rss" })
     if (query.filter === "unread") conditions.push(eq(article.isRead, false));
     if (query.filter === "starred") conditions.push(eq(article.isStarred, true));
     if (query.q) {
-      const like = `%${query.q}%`;
-      conditions.push(or(ilike(article.title, like), ilike(article.snippet, like))!);
+      const patterns = encodedQueryVariants(query.q).map((variant) => `%${variant}%`);
+      conditions.push(
+        or(...patterns.flatMap((like) => [ilike(article.title, like), ilike(article.snippet, like)]))!,
+      );
     }
     const rows = await db
       .select({
@@ -187,6 +235,9 @@ export const rssApi = new Elysia({ prefix: "/api/rss" })
       ...row,
       title: decodeEntities(row.title),
       snippet: row.snippet ? decodeEntities(row.snippet) : row.snippet,
+      // Legacy bodies ingested before text-node decoding still carry encoded
+      // entities (`&#8217;`); decode them for display like new rows.
+      content: row.content ? decodeHtmlTextNodes(row.content) : row.content,
       author: row.author ? decodeEntities(row.author) : row.author,
       feedTitle: row.feedTitle ? decodeEntities(row.feedTitle) : row.feedTitle,
     };

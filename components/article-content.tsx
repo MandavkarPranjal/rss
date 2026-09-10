@@ -150,6 +150,40 @@ function enhanceArticleHtml(html: string, baseUrl?: string) {
     Array.from(element.attributes).forEach((attribute) => {
       if (attribute.name.toLowerCase().startsWith("on")) element.removeAttribute(attribute.name);
     });
+
+    // Defense in depth: strip non-http(s) link/resource targets. Server-side
+    // sanitization already does this, but stale rows or future callers could
+    // pass unsanitized HTML (e.g. a snippet fallback) here — a
+    // `javascript:` href would otherwise stay executable.
+    for (const attributeName of ["href", "src", "xlink:href"]) {
+      const value = element.getAttribute(attributeName);
+      if (!value) continue;
+      const trimmed = value.trim();
+      if (trimmed.startsWith("#")) continue;
+      const lower = trimmed.toLowerCase();
+      if (
+        lower.startsWith("javascript:") ||
+        lower.startsWith("vbscript:") ||
+        lower.startsWith("file:") ||
+        lower.startsWith("data:text/html")
+      ) {
+        element.removeAttribute(attributeName);
+        continue;
+      }
+      if (baseUrl && (attributeName === "href" || attributeName === "src")) {
+        try {
+          const absolute = new URL(trimmed, baseUrl);
+          if (absolute.protocol !== "http:" && absolute.protocol !== "https:") {
+            // Keep data:image/audio/video (parity with server sanitizer).
+            if (!(attributeName === "src" && absolute.protocol === "data:")) {
+              element.removeAttribute(attributeName);
+            }
+          }
+        } catch {
+          element.removeAttribute(attributeName);
+        }
+      }
+    }
   });
 
   document.querySelectorAll("a[href]").forEach((anchor) => {
