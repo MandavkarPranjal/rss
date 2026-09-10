@@ -164,11 +164,11 @@ export default function FeedSidebar({ onNavigate }: { onNavigate?: () => void })
               value={newUrl}
               onChange={(e) => setNewUrl(e.target.value)}
               placeholder="https://example.com/feed.xml"
-              className="min-w-0 flex-1 rounded-[3px] border border-[#c8c1b5] bg-[#fbfaf7] px-2.5 py-2 text-[13px] outline-none placeholder:text-[#817c73] focus:border-[#a84f35]"
+              className="min-w-0 flex-1 rounded-[3px] border border-[#c8c1b5] bg-black px-2.5 py-2 text-[13px] outline-none placeholder:text-[#817c73] focus:border-white"
             />
             <button
               disabled={loading}
-              className="inline-flex shrink-0 items-center gap-1 rounded-[3px] bg-[#1c1b19] px-3 py-2 text-[13px] font-medium text-[#fbfaf7] transition hover:bg-[#a84f35] active:scale-[0.98] disabled:opacity-50"
+              className="inline-flex shrink-0 items-center gap-1 rounded-[3px] bg-[#fafafa] px-3 py-2 text-[13px] font-medium text-black transition hover:bg-[#e5e5e5] active:scale-[0.98] disabled:opacity-50"
             >
               <Plus size={13} weight="bold" /> Add
             </button>
@@ -192,8 +192,8 @@ export default function FeedSidebar({ onNavigate }: { onNavigate?: () => void })
                 }}
                 className={`rounded-[3px] border px-3 py-1 text-xs font-medium uppercase tracking-[0.05em] transition active:scale-[0.98] ${
                   effectiveFilter === f
-                    ? "border-[#a84f35] bg-[#a84f35] font-semibold text-white shadow-[0_2px_8px_rgba(168,79,53,0.25)]"
-                    : "border-[#c8c1b5] bg-[#fbfaf7]/50 text-[#5f5a52] hover:border-[#a84f35] hover:text-[#1c1b19] dark:border-white/20 dark:bg-white/5 dark:text-[#b8b1a8] dark:hover:border-[#c26b4c] dark:hover:text-white"
+                    ? "border-white bg-[#fafafa] font-semibold text-black"
+                    : "border-white/15 bg-transparent text-[#a3a3a3] hover:border-white/40 hover:text-white"
                 }`}
               >
                 {f}
@@ -208,8 +208,8 @@ export default function FeedSidebar({ onNavigate }: { onNavigate?: () => void })
                 onClick={onNavigate}
                 className={`rounded-[3px] border px-3 py-1 text-xs font-medium uppercase tracking-[0.05em] transition active:scale-[0.98] ${
                   effectiveFilter === f
-                    ? "border-[#a84f35] bg-[#a84f35] font-semibold text-white shadow-[0_2px_8px_rgba(168,79,53,0.25)]"
-                    : "border-[#c8c1b5] bg-[#fbfaf7]/50 text-[#5f5a52] hover:border-[#a84f35] hover:text-[#1c1b19] dark:border-white/20 dark:bg-white/5 dark:text-[#b8b1a8] dark:hover:border-[#c26b4c] dark:hover:text-white"
+                    ? "border-white bg-[#fafafa] font-semibold text-black"
+                    : "border-white/15 bg-transparent text-[#a3a3a3] hover:border-white/40 hover:text-white"
                 }`}
               >
                 {f}
@@ -225,13 +225,13 @@ export default function FeedSidebar({ onNavigate }: { onNavigate?: () => void })
           onClick={onNavigate}
           className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition ${
             activeFeedId === null
-              ? "border border-[#EAEAEA] bg-white font-medium dark:border-white/10 dark:bg-[#201F1E]"
-              : "border border-transparent hover:bg-white/70 dark:hover:bg-white/5"
+              ? "border border-white/20 bg-[#141414] font-medium text-white shadow-[inset_2px_0_0_#fafafa]"
+              : "border border-transparent text-[#8a8a8a] hover:bg-[#141414] hover:text-white"
           }`}
         >
           <span className="min-w-0 flex-1 truncate">All feeds</span>
           {totalUnread > 0 && (
-            <span className="rounded-full bg-[#FBF3DB] px-2 py-0.5 font-mono text-[11px] text-[#956400] dark:bg-[#956400]/25 dark:text-[#E8C26A]">
+            <span className="rounded-full bg-white/10 px-2 py-0.5 font-mono text-[11px] text-[#e5e5e5]">
               {totalUnread}
             </span>
           )}
@@ -248,16 +248,16 @@ export default function FeedSidebar({ onNavigate }: { onNavigate?: () => void })
               onClick={onNavigate}
               className={`mt-0.5 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition ${
                 active
-                  ? "border border-[#EAEAEA] bg-white font-medium dark:border-white/10 dark:bg-[#201F1E]"
-                  : "border border-transparent hover:bg-white/70 dark:hover:bg-white/5"
+                  ? "border border-white/20 bg-[#141414] font-medium text-white shadow-[inset_2px_0_0_#fafafa]"
+                  : "border border-transparent text-[#8a8a8a] hover:bg-[#141414] hover:text-white"
               }`}
             >
               <span
-                className={`h-1.5 w-1.5 shrink-0 rounded-full ${f.unreadCount > 0 ? "bg-[#1F6C9F]" : "bg-[#EAEAEA] dark:bg-white/15"}`}
+                className={`h-1.5 w-1.5 shrink-0 rounded-full ${f.unreadCount > 0 ? "bg-white" : "bg-white/15"}`}
               />
               <span className="min-w-0 flex-1 truncate">{f.title}</span>
               {f.unreadCount > 0 && (
-                <span className="shrink-0 rounded-full bg-[#FBF3DB] px-2 py-0.5 font-mono text-[11px] text-[#956400] dark:bg-[#956400]/25 dark:text-[#E8C26A]">
+                <span className="shrink-0 rounded-full bg-white/10 px-2 py-0.5 font-mono text-[11px] text-[#e5e5e5]">
                   {f.unreadCount}
                 </span>
               )}
@@ -265,35 +265,35 @@ export default function FeedSidebar({ onNavigate }: { onNavigate?: () => void })
           );
         })}
         {feeds.length === 0 && (
-          <div className="rounded-lg border border-[#EAEAEA] bg-white p-4 text-[13px] text-[#787774] dark:border-white/10 dark:bg-[#201F1E]">
+          <div className="rounded-lg border border-white/10 bg-[#0a0a0a] p-4 text-[13px] text-[#787774]">
             No feeds yet. Add your first feed above to start a quiet reading list.
           </div>
         )}
       </div>
 
       {activeFeedId && activeFeed && (
-        <div className="border-t border-[#EAEAEA] p-3 dark:border-white/10">
+        <div className="border-t border-white/10 p-3">
           <p className="mb-2 truncate px-1 font-mono text-[11px] uppercase tracking-[0.1em] text-[#787774]">
             {activeFeed.title}
           </p>
           <div className="flex gap-1.5">
             <button
               onClick={() => refreshFeed(activeFeedId)}
-              className="flex-1 rounded-[6px] border border-[#EAEAEA] bg-white px-2 py-1.5 text-xs transition hover:bg-[#FBFBFA] active:scale-[0.98] dark:border-white/10 dark:bg-transparent dark:hover:bg-white/5"
+              className="flex-1 rounded-[6px] border border-white/10 bg-transparent px-2 py-1.5 text-xs transition hover:bg-white/5 active:scale-[0.98]"
             >
               Refresh
             </button>
             <button
               onClick={() => markAllRead(activeFeedId)}
               title="Mark all read"
-              className="flex flex-1 items-center justify-center gap-1 rounded-[6px] border border-[#EAEAEA] bg-white px-2 py-1.5 text-xs transition hover:bg-[#FBFBFA] active:scale-[0.98] dark:border-white/10 dark:bg-transparent dark:hover:bg-white/5"
+              className="flex flex-1 items-center justify-center gap-1 rounded-[6px] border border-white/10 bg-transparent px-2 py-1.5 text-xs transition hover:bg-white/5 active:scale-[0.98]"
             >
               <Checks size={13} weight="bold" /> Read
             </button>
             <button
               onClick={() => removeFeed(activeFeedId)}
               title="Remove feed"
-              className="inline-flex items-center gap-1 rounded-[6px] border border-[#FDEBEC] bg-[#FDEBEC] px-2 py-1.5 text-xs text-[#9F2F2D] transition hover:brightness-95 active:scale-[0.98] dark:border-transparent dark:bg-[#9F2F2D]/20 dark:text-[#F3B8B6]"
+              className="inline-flex items-center gap-1 rounded-[6px] border border-white/10 bg-white/5 px-2 py-1.5 text-xs text-[#d4d4d4] transition hover:bg-white/10 active:scale-[0.98]"
             >
               <Trash size={13} weight="bold" />
             </button>

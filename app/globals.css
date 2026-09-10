@@ -8,68 +8,89 @@
   --font-display: var(--font-display), var(--font-geist-sans), system-ui, sans-serif;
 }
 
+/* Vantablack — pure matte black. Absorbs everything, reflects nothing.
+   No gradients, no grain, no glow, no shadow. Flat #000 with hairline
+   whites and desaturated grays only. */
 :root {
   color-scheme: dark;
-  --background: #121211;
-  --foreground: #e8e4dc;
-  --paper: #1a1917;
-  --bone: #211f1c;
-  --ink: #e8e4dc;
-  --ink-soft: #c4beb4;
-  --muted: #918b82;
-  --line: rgba(232, 228, 220, 0.13);
-  --line-strong: rgba(232, 228, 220, 0.22);
-  --accent: #c26b4c;
-  --accent-soft: #3a241d;
-  --pastel-red-bg: #f0ddd4;
-  --pastel-red-tx: #8e3f2a;
-  --pastel-blue-bg: #e8e5dc;
-  --pastel-blue-tx: #5d665f;
-  --pastel-green-bg: #e2e7dc;
-  --pastel-green-tx: #4d6348;
-  --pastel-yellow-bg: #eee3c8;
-  --pastel-yellow-tx: #80652f;
+  --background: #000000;
+  --foreground: #f2f2f2;
+  --paper: #000000;
+  --bone: #0a0a0a;
+  --ink: #f2f2f2;
+  --ink-soft: #a3a3a3;
+  --muted: #6e6e6e;
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.16);
+  --accent: #fafafa;
+  --accent-soft: #141414;
+  --accent-ink: #000000;
+  --pastel-red-bg: rgba(255, 255, 255, 0.06);
+  --pastel-red-tx: #d4d4d4;
+  --pastel-blue-bg: rgba(255, 255, 255, 0.06);
+  --pastel-blue-tx: #d4d4d4;
+  --pastel-green-bg: rgba(255, 255, 255, 0.06);
+  --pastel-green-tx: #d4d4d4;
+  --pastel-yellow-bg: rgba(255, 255, 255, 0.08);
+  --pastel-yellow-tx: #e5e5e5;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #191918;
-    --foreground: #ececea;
-    --paper: #201f1e;
-    --bone: #232220;
-    --ink: #ececea;
-    --ink-soft: #d6d3cb;
-    --muted: #9b9893;
-    --line: rgba(255, 255, 255, 0.09);
-    --line-strong: rgba(255, 255, 255, 0.14);
-    --pastel-red-bg: rgba(159, 47, 45, 0.22);
-    --pastel-red-tx: #f3b8b6;
-    --pastel-blue-bg: rgba(31, 108, 159, 0.24);
-    --pastel-blue-tx: #a8d4f0;
-    --pastel-green-bg: rgba(52, 101, 56, 0.26);
-    --pastel-green-tx: #b3d0b4;
-    --pastel-yellow-bg: rgba(149, 100, 0, 0.26);
-    --pastel-yellow-tx: #e8c26a;
+    --background: #000000;
+    --foreground: #f2f2f2;
+    --paper: #000000;
+    --bone: #0a0a0a;
+    --ink: #f2f2f2;
+    --ink-soft: #a3a3a3;
+    --muted: #6e6e6e;
+    --line: rgba(255, 255, 255, 0.08);
+    --line-strong: rgba(255, 255, 255, 0.16);
+    --pastel-red-bg: rgba(255, 255, 255, 0.06);
+    --pastel-red-tx: #d4d4d4;
+    --pastel-blue-bg: rgba(255, 255, 255, 0.06);
+    --pastel-blue-tx: #d4d4d4;
+    --pastel-green-bg: rgba(255, 255, 255, 0.06);
+    --pastel-green-tx: #d4d4d4;
+    --pastel-yellow-bg: rgba(255, 255, 255, 0.08);
+    --pastel-yellow-tx: #e5e5e5;
   }
 }
 
-/* Ledger is a dark-first reader. These guards neutralize a few legacy light
-   utility classes that otherwise win outside the OS dark-mode media query. */
-[class*="bg-white"],
+/* Ledger is vantablack-only. Neutralize every legacy warm / light utility
+   so old hardcoded classes collapse to matte black.
+   NOTE: white-opacity utilities (bg-white/5, bg-white/10, hover:bg-white/10)
+   are excluded — they are the vantablack selection/hover language. */
+[class*="bg-white"]:not([class*="bg-white/"]),
 [class*="bg-[#fbfaf7]"],
 [class*="bg-[#F7F6F3]"],
-[class*="bg-[#FBFBFA]"] {
+[class*="bg-[#FBFBFA]"],
+[class*="bg-[#FBF3DB]"],
+[class*="bg-[#f4f1eb]"] {
   background-color: var(--paper) !important;
 }
 
 [class*="bg-[#ebe7df]"],
 [class*="bg-[#232220]"],
-[class*="bg-[#201F1E]"] {
+[class*="bg-[#201F1E]"],
+[class*="bg-[#FDEBEC]"],
+[class*="bg-[#f0ddd4]"] {
   background-color: var(--bone) !important;
 }
 
+/* Primary actions become inverted white-on-black. */
 [class*="bg-[#1c1b19]"] {
   background-color: var(--accent) !important;
+  color: var(--accent-ink) !important;
+}
+
+[class*="bg-[#a84f35]"] {
+  background-color: var(--accent) !important;
+  color: var(--accent-ink) !important;
+}
+
+[class*="text-[#fbfaf7]"] {
+  color: var(--accent-ink) !important;
 }
 
 [class*="text-[#1c1b19]"],
@@ -77,22 +98,54 @@
   color: var(--ink) !important;
 }
 
-[class*="text-[#817c73]"] {
+[class*="text-[#817c73]"],
+[class*="text-[#787774]"],
+[class*="text-[#5f5a52]"] {
   color: var(--muted) !important;
+}
+
+[class*="border-[#ddd8ce]"],
+[class*="border-[#e5e0d7]"],
+[class*="border-[#c8c1b5]"],
+[class*="border-[#EAEAEA]"] {
+  border-color: var(--line) !important;
+}
+
+[class*="decoration-[#c8c1b5]"],
+[class*="decoration-[#EAEAEA]"] {
+  text-decoration-color: var(--line-strong) !important;
+}
+
+[class*="text-[#a84f35]"],
+[class*="text-[#956400]"],
+[class*="text-[#9F2F2D]"],
+[class*="text-[#1F6C9F]"],
+[class*="text-[#346538]"],
+[class*="text-[#8e3f2a]"] {
+  color: var(--ink) !important;
+}
+
+[class*="bg-[#1F6C9F]"] {
+  background-color: var(--accent) !important;
+}
+
+[class*="border-[#a84f35]"] {
+  border-color: var(--line-strong) !important;
 }
 
 html {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  background: #000;
 }
 
 body {
-  background: var(--background);
+  background: #000;
   color: var(--foreground);
   font-family: var(--font-sans);
   line-height: 1.6;
   font-feature-settings: "ss01", "cv05", "cv11";
-  background-image: radial-gradient(circle at 14% 0%, rgba(255,255,255,.035), transparent 32rem), url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.045'/%3E%3C/svg%3E");
+  background-image: none;
 }
 
 /* Dev-blog display helper (headings, logo) */
@@ -104,17 +157,18 @@ body {
 }
 
 .reader-chrome {
-  box-shadow: 0 1px 0 rgba(28, 27, 25, .05), 0 12px 36px rgba(95, 79, 61, .04);
+  box-shadow: none;
+  background: #000 !important;
 }
 
 .paper-grain {
-  background-color: var(--paper);
-  background-image: linear-gradient(rgba(255,255,255,.025), rgba(255,255,255,.025)), url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.035'/%3E%3C/svg%3E");
+  background-color: #000;
+  background-image: none;
 }
 
 .reading-surface {
-  background: #171716;
-  box-shadow: inset 1px 0 0 rgba(255,255,255,.035), inset -1px 0 0 rgba(255,255,255,.035);
+  background: #000;
+  box-shadow: none;
 }
 
 /* Quiet scrollbars */
@@ -155,27 +209,23 @@ body {
   }
 }
 
-/* Article list row hover — ultra-subtle lift */
+/* Article list row hover — flat, no lift. Vantablack keeps one white edge. */
 .row-lift {
-  transition:
-    background-color 200ms ease,
-    box-shadow 200ms ease;
+  transition: background-color 200ms ease;
 }
 .row-lift:hover {
-  box-shadow: inset 3px 0 0 var(--accent), 0 2px 8px rgba(78, 64, 48, 0.05);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
-/* Ambient hero wash for reader empty state */
+/* Ambient hero wash — disabled for vantablack. Pure void. */
 .ambient-wash {
-  background-image:
-    radial-gradient(560px 260px at 20% 0%, rgba(31, 108, 159, 0.05), transparent 70%),
-    radial-gradient(520px 280px at 85% 20%, rgba(149, 100, 0, 0.05), transparent 70%);
+  background-image: none;
+  background: #000;
 }
 @media (prefers-color-scheme: dark) {
   .ambient-wash {
-    background-image:
-      radial-gradient(560px 260px at 20% 0%, rgba(168, 212, 240, 0.07), transparent 70%),
-      radial-gradient(520px 280px at 85% 20%, rgba(232, 194, 106, 0.06), transparent 70%);
+    background-image: none;
+    background: #000;
   }
 }
 
@@ -219,13 +269,14 @@ body {
   margin-right: -0.5rem;
   border: 1px solid var(--line);
   border-radius: 14px;
-  background: #e8e7e3;
-  box-shadow: 0 12px 30px rgba(38, 37, 34, 0.08);
+  background: #0a0a0a;
+  box-shadow: none;
+  filter: grayscale(35%) brightness(0.85);
 }
 .article-banner::after {
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, transparent 58%, rgba(25, 25, 24, 0.14));
+  background: linear-gradient(180deg, transparent 60%, rgba(0, 0, 0, 0.6));
   content: "";
   pointer-events: none;
 }
@@ -244,9 +295,9 @@ body {
 }
 @media (prefers-color-scheme: dark) {
   .article-banner {
-    border-color: rgba(255, 255, 255, 0.1);
-    background: #292826;
-    box-shadow: 0 16px 34px rgba(0, 0, 0, 0.22);
+    border-color: var(--line);
+    background: #0a0a0a;
+    box-shadow: none;
   }
 }
 
@@ -298,6 +349,7 @@ body {
   border: 1px solid var(--line);
   border-radius: 12px;
   margin: 1.5em auto;
+  filter: grayscale(25%) brightness(0.88);
 }
 .reader-body iframe {
   display: block;
@@ -354,7 +406,7 @@ body {
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: #f6f6f5;
+  background: #0a0a0a;
 }
 .reader-code-toolbar {
   display: flex;
@@ -363,7 +415,7 @@ body {
   min-height: 2.25rem;
   padding: 0.35rem 0.65rem 0.35rem 0.85rem;
   border-bottom: 1px solid var(--line);
-  background: color-mix(in srgb, var(--bone) 82%, transparent);
+  background: #0a0a0a;
 }
 .reader-code-language {
   color: var(--muted);
@@ -383,7 +435,7 @@ body {
   transition: color 150ms ease, background-color 150ms ease;
 }
 .reader-code-copy:hover {
-  background: var(--paper);
+  background: #141414;
   color: var(--ink);
 }
 .reader-code-block pre {
@@ -408,7 +460,7 @@ body {
 }
 @media (prefers-color-scheme: dark) {
   .reader-code-block {
-    background: #20211f;
+    background: #0a0a0a;
   }
   .reader-code-block pre.shiki,
   .reader-code-block pre.shiki span {
@@ -416,7 +468,7 @@ body {
   }
 }
 .reader-body :not(pre) > code {
-  background: #29241d;
+  background: #1a1a1a;
   color: var(--ink);
   padding: 0.1em 0.35em;
   border-radius: 4px;
@@ -429,15 +481,15 @@ kbd {
   border: 1px solid var(--line);
   border-bottom-width: 2px;
   border-radius: 4px;
-  background: var(--bone);
+  background: #0a0a0a;
   padding: 1px 5px;
   color: var(--muted);
   white-space: nowrap;
 }
 
-/* Focus visibility — calm, accessible */
+/* Focus visibility — stark white on black */
 :where(a, button, input):focus-visible {
-  outline: 2px solid var(--ink);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
   border-radius: 4px;
 }
@@ -445,26 +497,26 @@ kbd {
 @media (prefers-color-scheme: dark) {
   :root {
     color-scheme: dark;
-    --background: #121211;
-    --foreground: #e8e4dc;
-    --paper: #1a1917;
-    --bone: #211f1c;
-    --ink: #e8e4dc;
-    --ink-soft: #c4beb4;
-    --muted: #918b82;
-    --line: rgba(232, 228, 220, 0.13);
-    --line-strong: rgba(232, 228, 220, 0.22);
-    --accent: #c26b4c;
-    --accent-soft: #3a241d;
+    --background: #000000;
+    --foreground: #f2f2f2;
+    --paper: #000000;
+    --bone: #0a0a0a;
+    --ink: #f2f2f2;
+    --ink-soft: #a3a3a3;
+    --muted: #6e6e6e;
+    --line: rgba(255, 255, 255, 0.08);
+    --line-strong: rgba(255, 255, 255, 0.16);
+    --accent: #fafafa;
+    --accent-soft: #141414;
   }
 
   body {
-    background-color: var(--background) !important;
+    background-color: #000 !important;
     color: var(--foreground) !important;
   }
 
   [class*="bg-[#fbfaf7]"],
-  [class*="bg-white"] {
+  [class*="bg-white"]:not([class*="bg-white/"]) {
     background-color: var(--paper) !important;
   }
 
@@ -479,6 +531,7 @@ kbd {
 
   [class*="bg-[#1c1b19]"] {
     background-color: var(--accent) !important;
+    color: var(--accent-ink) !important;
   }
 
   [class*="text-[#1c1b19]"],

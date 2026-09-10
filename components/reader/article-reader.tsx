@@ -179,8 +179,8 @@ export default function ArticleReader({
     return (
       <div className="ambient-wash flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-8">
         <div className="max-w-sm text-center">
-          <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-xl border border-[#EAEAEA] bg-white dark:border-white/10 dark:bg-[#201F1E]">
-            <Newspaper size={24} weight="bold" className="text-[#111111] dark:text-[#ECECEA]" />
+          <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-xl border border-white/10 bg-[#0a0a0a]">
+            <Newspaper size={24} weight="bold" className="text-white" />
           </span>
           <h2 className="font-editorial mt-5 text-[34px] leading-[.95] tracking-tight">
             Pick something
@@ -250,30 +250,30 @@ export default function ArticleReader({
               href={article.link}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-[3px] bg-[#1c1b19] px-3.5 py-2 text-[13px] font-medium text-[#fbfaf7] transition hover:bg-[#a84f35] active:scale-[0.98]"
+              className="inline-flex items-center gap-1.5 rounded-[3px] bg-[#fafafa] px-3.5 py-2 text-[13px] font-medium text-black transition hover:bg-[#e5e5e5] active:scale-[0.98]"
             >
               Open original <ArrowSquareOut size={13} weight="bold" />
             </a>
           )}
           <button
             onClick={toggleStar}
-              className="inline-flex items-center gap-1.5 rounded-[3px] border border-[#c8c1b5] bg-[#fbfaf7] px-3.5 py-2 text-[13px] transition hover:bg-[#ebe7df] active:scale-[0.98]"
+              className="inline-flex items-center gap-1.5 rounded-[3px] border border-white/15 bg-transparent px-3.5 py-2 text-[13px] transition hover:bg-white/10 active:scale-[0.98]"
           >
             <Star
               size={13}
               weight={article.isStarred ? "fill" : "bold"}
-              className={article.isStarred ? "text-[#956400]" : ""}
+              className={article.isStarred ? "text-white" : ""}
             />
             {article.isStarred ? "Starred" : "Star"}
           </button>
           {article.isStarred && (
-            <span className="rounded-full bg-[#FBF3DB] px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.05em] text-[#956400] dark:bg-[#956400]/25 dark:text-[#E8C26A]">
+            <span className="rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.05em] text-[#e5e5e5]">
               Saved
             </span>
           )}
           <Link
             href={`/article/${article.id}`}
-            className="ml-auto text-xs text-[#787774] underline decoration-[#EAEAEA] underline-offset-4 hover:text-[#111111] dark:hover:text-white"
+            className="ml-auto text-xs text-[#787774] underline decoration-[#EAEAEA] underline-offset-4 hover:text-white"
           >
             Permalink
           </Link>
