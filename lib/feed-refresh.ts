@@ -57,7 +57,7 @@ async function ingestItems(
   return result.length;
 }
 
-const REFRESH_INTERVAL_MS = 60 * 60 * 1000;
+const REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const MAX_FAILURE_BACKOFF_MS = 24 * 60 * 60 * 1000;
 
 function errorMessage(error: unknown): string {

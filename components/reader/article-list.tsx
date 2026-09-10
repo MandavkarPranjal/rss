@@ -46,7 +46,7 @@ export default function ArticleList({ feedId, filter, heading }: Props) {
     };
 
     refreshArticles();
-    const interval = window.setInterval(refreshArticles, 60_000);
+    const interval = window.setInterval(refreshArticles, 10 * 60_000);
     window.addEventListener("focus", refreshArticles);
     document.addEventListener("visibilitychange", refreshArticles);
 
