@@ -14,6 +14,12 @@ type Passkey = {
 
 type SettingsSection = "password" | "email" | "passkeys";
 
+const settingsSections = [
+  ["password", "Password"],
+  ["email", "Email"],
+  ["passkeys", "Passkeys"],
+] as const satisfies ReadonlyArray<readonly [SettingsSection, string]>;
+
 const inputCls =
   "w-full rounded-[6px] border border-[#EAEAEA] bg-[#FBFBFA] px-3 py-2 text-sm outline-none placeholder:text-[#787774] focus:border-[#111111] focus:bg-white dark:border-white/10 dark:bg-white/5 dark:focus:bg-transparent";
 
@@ -65,8 +71,42 @@ export default function SettingsForm({ autoLoadPasskeys = true }: { autoLoadPass
   const [addingPasskey, setAddingPasskey] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [mobileSection, setMobileSection] = useState<SettingsSection>("password");
+  const mobileTabRefs = useRef<Record<SettingsSection, HTMLButtonElement | null>>({
+    password: null,
+    email: null,
+    passkeys: null,
+  });
 
   const loadSeqRef = useRef(0);
+
+  const handleMobileTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, value: SettingsSection) => {
+    const currentIndex = settingsSections.findIndex(([section]) => section === value);
+    let nextIndex = currentIndex;
+
+    switch (event.key) {
+      case "ArrowRight":
+      case "ArrowDown":
+        nextIndex = (currentIndex + 1) % settingsSections.length;
+        break;
+      case "ArrowLeft":
+      case "ArrowUp":
+        nextIndex = (currentIndex - 1 + settingsSections.length) % settingsSections.length;
+        break;
+      case "Home":
+        nextIndex = 0;
+        break;
+      case "End":
+        nextIndex = settingsSections.length - 1;
+        break;
+      default:
+        return;
+    }
+
+    event.preventDefault();
+    const [nextSection] = settingsSections[nextIndex];
+    setMobileSection(nextSection);
+    mobileTabRefs.current[nextSection]?.focus();
+  };
 
   const loadPasskeys = useCallback(async () => {
     // Guard against out-of-order responses: the mount load and the post-add
@@ -224,17 +264,20 @@ export default function SettingsForm({ autoLoadPasskeys = true }: { autoLoadPass
   return (
     <div className="space-y-5 sm:space-y-6">
       <div className="grid grid-cols-3 gap-1 rounded-[6px] bg-[#F7F6F3] p-1 sm:hidden dark:bg-white/5" role="tablist" aria-label="Settings sections">
-        {([
-          ["password", "Password"],
-          ["email", "Email"],
-          ["passkeys", "Passkeys"],
-        ] as const).map(([value, label]) => (
+        {settingsSections.map(([value, label]) => (
           <button
             key={value}
             type="button"
+            id={`settings-tab-${value}`}
             role="tab"
             aria-selected={mobileSection === value}
+            aria-controls={`settings-panel-${value}`}
+            tabIndex={mobileSection === value ? 0 : -1}
+            ref={(element) => {
+              mobileTabRefs.current[value] = element;
+            }}
             onClick={() => setMobileSection(value)}
+            onKeyDown={(event) => handleMobileTabKeyDown(event, value)}
             className={`rounded-[4px] px-2 py-1.5 text-[12px] font-medium transition active:scale-[0.98] ${
               mobileSection === value
                 ? "bg-white text-[#111111] shadow-sm dark:bg-[#343230] dark:text-white"
@@ -247,7 +290,9 @@ export default function SettingsForm({ autoLoadPasskeys = true }: { autoLoadPass
       </div>
 
       <section
-        aria-labelledby="settings-password"
+        id="settings-panel-password"
+        role="tabpanel"
+        aria-labelledby="settings-tab-password"
         className={mobileSection === "password" ? "block sm:block" : "hidden sm:block"}
       >
         <h3 id="settings-password" className="flex items-center gap-1.5 text-sm font-medium">
@@ -311,7 +356,9 @@ export default function SettingsForm({ autoLoadPasskeys = true }: { autoLoadPass
       </section>
 
       <section
-        aria-labelledby="settings-email"
+        id="settings-panel-email"
+        role="tabpanel"
+        aria-labelledby="settings-tab-email"
         className={`${mobileSection === "email" ? "block" : "hidden"} border-t border-[#EAEAEA] pt-4 sm:block sm:pt-5 dark:border-white/10`}
       >
         <h3 id="settings-email" className="flex items-center gap-1.5 text-sm font-medium">
@@ -349,7 +396,9 @@ export default function SettingsForm({ autoLoadPasskeys = true }: { autoLoadPass
       </section>
 
       <section
-        aria-labelledby="settings-passkeys"
+        id="settings-panel-passkeys"
+        role="tabpanel"
+        aria-labelledby="settings-tab-passkeys"
         className={`${mobileSection === "passkeys" ? "block" : "hidden"} border-t border-[#EAEAEA] pt-4 sm:block sm:pt-5 dark:border-white/10`}
       >
         <h3 id="settings-passkeys" className="flex items-center gap-1.5 text-sm font-medium">

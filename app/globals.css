@@ -68,9 +68,17 @@
   background-color: var(--bone) !important;
 }
 
+[class*="bg-[#1c1b19]"] {
+  background-color: var(--accent) !important;
+}
+
 [class*="text-[#1c1b19]"],
 [class*="text-[#111111]"] {
   color: var(--ink) !important;
+}
+
+[class*="text-[#817c73]"] {
+  color: var(--muted) !important;
 }
 
 html {
@@ -193,7 +201,7 @@ body {
 }
 @media (prefers-color-scheme: dark) {
   .reading-progress-fill {
-    background: var(--pastel-blue-tx);
+    background: var(--accent);
   }
 }
 
@@ -455,18 +463,6 @@ kbd {
     color: var(--foreground) !important;
   }
 
-  [class*="dark:bg"] {
-    background-color: var(--paper) !important;
-  }
-
-  [class*="dark:border"] {
-    border-color: var(--line) !important;
-  }
-
-  [class*="dark:text"] {
-    color: var(--ink) !important;
-  }
-
   [class*="bg-[#fbfaf7]"],
   [class*="bg-white"] {
     background-color: var(--paper) !important;
@@ -481,9 +477,17 @@ kbd {
     background-color: var(--background) !important;
   }
 
+  [class*="bg-[#1c1b19]"] {
+    background-color: var(--accent) !important;
+  }
+
   [class*="text-[#1c1b19]"],
   [class*="text-[#111111]"] {
     color: var(--ink) !important;
+  }
+
+  [class*="text-[#817c73]"] {
+    color: var(--muted) !important;
   }
 
   [class*="border-[#ddd8ce]"],
