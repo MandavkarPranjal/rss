@@ -18,7 +18,7 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 ## Scheduled feed refreshes
 
-GitHub Actions runs `.github/workflows/refresh-feeds.yml` hourly. Add these
+GitHub Actions runs `.github/workflows/refresh-feeds.yml` every six hours. Add these
 repository secrets in GitHub:
 
 ```text
@@ -28,7 +28,7 @@ CRON_SECRET=the-same-value-configured-in-Vercel
 
 The workflow calls `/api/cron/refresh`, which fetches every saved feed and
 stores newly discovered entries without removing older ones. For another
-external scheduler, make an hourly GET request to that endpoint with:
+external scheduler, make a GET request every six hours to that endpoint with:
 
 ```text
 Authorization: Bearer <CRON_SECRET>
