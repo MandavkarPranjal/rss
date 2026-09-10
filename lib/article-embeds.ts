@@ -1,27 +1,65 @@
-export type VideoEmbed = {
-  src: string;
-  title: string;
-};
+export type VideoEmbed =
+  | { kind: "iframe"; src: string; title: string }
+  | { kind: "mux"; title: string; playbackId?: string; src?: string; playbackToken?: string };
 
 const EMBED_IFRAME_ALLOW =
   "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";
 const JW_PLAYER_HOSTS = ["content.jwplatform.com", "cdn.jwplayer.com"];
+const MUX_PLAYER_HOSTS = ["player.mux.com", "stream.mux.com"];
 
 function isValidJwId(value: string | null): value is string {
   return Boolean(value && /^[a-zA-Z0-9_-]{6,}$/u.test(value));
 }
 
+function isValidMuxPlaybackId(value: string | null): value is string {
+  return Boolean(value && /^[a-zA-Z0-9_-]{8,}$/u.test(value));
+}
+
+/**
+ * JW-hosted video, played through Mux Player instead of the JW iframe.
+ * The same media ID addresses JW's public HLS manifest, which
+ * <mux-player> can play via its `src` attribute.
+ */
 function jwPlayerEmbed(mediaId: string): VideoEmbed {
   return {
-    src: `https://content.jwplatform.com/players/${encodeURIComponent(mediaId)}.html`,
+    kind: "mux",
+    src: `https://cdn.jwplayer.com/manifests/${encodeURIComponent(mediaId)}.m3u8`,
     title: "JW Player video",
   };
+}
+
+/** Mux-hosted video, played through Mux Player via its playback ID. */
+function muxPlayerEmbed(playbackId: string, playbackToken?: string): VideoEmbed {
+  return {
+    kind: "mux",
+    playbackId,
+    src: `https://stream.mux.com/${encodeURIComponent(playbackId)}.m3u8`,
+    playbackToken,
+    title: "Mux video",
+  };
+}
+
+/** Build a <mux-player> element for a mux-kind embed. */
+export function buildMuxPlayer(
+  document: Document,
+  embed: Extract<VideoEmbed, { kind: "mux" }>,
+  title?: string | null,
+): Element {
+  const player = document.createElement("mux-player");
+  player.setAttribute("stream-type", "on-demand");
+  if (embed.playbackId) player.setAttribute("playback-id", embed.playbackId);
+  if (embed.playbackToken) player.setAttribute("playback-token", embed.playbackToken);
+  if (embed.src) player.setAttribute("src", embed.src);
+  const label = title?.trim() || embed.title;
+  player.setAttribute("title", label);
+  player.setAttribute("metadata-video-title", label);
+  return player;
 }
 
 /** Apply the shared iframe policy to a known-safe video embed. */
 export function configureEmbedIframe(
   frame: HTMLIFrameElement,
-  embed: VideoEmbed,
+  embed: Extract<VideoEmbed, { kind: "iframe" }>,
   title?: string | null,
 ): void {
   frame.removeAttribute("srcdoc");
@@ -82,36 +120,46 @@ export function getVideoEmbed(urlValue: string): VideoEmbed | undefined {
   if (url.protocol !== "http:" && url.protocol !== "https:") return undefined;
 
   const youtube = youtubeEmbed(url);
-  if (youtube) return { src: youtube, title: "YouTube video" };
+  if (youtube) return { kind: "iframe", src: youtube, title: "YouTube video" };
 
   if (isAllowedHost(url.hostname, ["vimeo.com"])) {
     const id = url.pathname.match(/\/(\d+)(?:$|\/)/u)?.[1];
-    if (id) return { src: `https://player.vimeo.com/video/${id}`, title: "Vimeo video" };
+    if (id) return { kind: "iframe", src: `https://player.vimeo.com/video/${id}`, title: "Vimeo video" };
   }
 
   if (isAllowedHost(url.hostname, ["dailymotion.com", "dai.ly"])) {
     const id = url.hostname.toLowerCase() === "dai.ly"
       ? url.pathname.split("/")[1]
       : url.pathname.match(/\/video\/([a-zA-Z0-9]+)/u)?.[1];
-    if (id) return { src: `https://www.dailymotion.com/embed/video/${id}`, title: "Dailymotion video" };
+    if (id) return { kind: "iframe", src: `https://www.dailymotion.com/embed/video/${id}`, title: "Dailymotion video" };
   }
 
   if (isAllowedHost(url.hostname, ["loom.com"])) {
     const id = url.pathname.match(/\/(?:share|embed)\/([a-zA-Z0-9]+)/u)?.[1];
-    if (id) return { src: `https://www.loom.com/embed/${id}`, title: "Loom video" };
+    if (id) return { kind: "iframe", src: `https://www.loom.com/embed/${id}`, title: "Loom video" };
   }
 
   if (isAllowedHost(url.hostname, ["twitch.tv"])) {
     const id = url.pathname.match(/\/videos\/(\d+)/u)?.[1] ?? url.searchParams.get("video") ?? undefined;
-    if (id) return { src: `https://player.twitch.tv/?video=${id}&parent=${encodeURIComponent(typeof window === "undefined" ? "localhost" : window.location.hostname)}`, title: "Twitch video" };
+    if (id) return { kind: "iframe", src: `https://player.twitch.tv/?video=${id}&parent=${encodeURIComponent(typeof window === "undefined" ? "localhost" : window.location.hostname)}`, title: "Twitch video" };
+  }
+
+  if (isAllowedHost(url.hostname, MUX_PLAYER_HOSTS)) {
+    // player.mux.com/{playbackId} and stream.mux.com/{playbackId}[.m3u8]
+    const playbackId = url.pathname.split("/").filter(Boolean)[0]?.replace(/\.m3u8$/u, "");
+    const token = url.searchParams.get("token") ?? url.searchParams.get("playback-token") ?? undefined;
+    if (isValidMuxPlaybackId(playbackId ?? null)) return muxPlayerEmbed(playbackId, token);
   }
 
   if (isAllowedHost(url.hostname, JW_PLAYER_HOSTS)) {
     const mediaMatch = url.pathname.match(/^\/v2\/media\/([a-zA-Z0-9_-]+)$/u);
     if (mediaMatch && isValidJwId(mediaMatch[1])) return jwPlayerEmbed(mediaMatch[1]);
 
-    const playerMatch = url.pathname.match(/^\/players\/([a-zA-Z0-9_-]+)(?:-[a-zA-Z0-9_-]+)?\.html$/u);
+    const playerMatch = url.pathname.match(/^\/players\/([a-zA-Z0-9_-]+?)(?:-[a-zA-Z0-9_-]+)?\.html$/u);
     if (playerMatch && isValidJwId(playerMatch[1])) return jwPlayerEmbed(playerMatch[1]);
+
+    const manifestMatch = url.pathname.match(/^\/manifests\/([a-zA-Z0-9_-]+)\.m3u8$/u);
+    if (manifestMatch && isValidJwId(manifestMatch[1])) return jwPlayerEmbed(manifestMatch[1]);
   }
 
   return undefined;
@@ -184,6 +232,13 @@ export function sanitizeIframe(
   const src = frame.getAttribute("src") ?? "";
   const embed = getSafeIframeSrc(src, baseUrl);
   if (embed) {
+    // Mux-played videos (Mux-hosted or JW manifests) render as <mux-player>
+    // instead of an <iframe> — e.g. stale JW player iframes stored before the
+    // migration are upgraded in place.
+    if (embed.kind === "mux") {
+      frame.replaceWith(buildMuxPlayer(document, embed, frame.getAttribute("title")));
+      return;
+    }
     configureEmbedIframe(frame, embed, frame.getAttribute("title"));
     return;
   }

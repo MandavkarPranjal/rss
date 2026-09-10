@@ -1,7 +1,7 @@
 import { Readability } from "@mozilla/readability";
 import { JSDOM } from "jsdom";
 import Parser from "rss-parser";
-import { configureEmbedIframe, getVideoEmbed, sanitizeIframe } from "./article-embeds";
+import { buildMuxPlayer, configureEmbedIframe, getVideoEmbed, sanitizeIframe } from "./article-embeds";
 import { decodeEntities, decodeHtmlTextNodes } from "./decode-entities";
 import { fetchPublicText } from "./safe-fetch";
 
@@ -103,6 +103,16 @@ function sanitizeArticleHtml(html: string, baseUrl: string): string {  // Feeds 
     const embed = getVideoEmbed(metadata.getAttribute("content") ?? "");
     const player = metadata.parentElement;
     if (!embed || !player) return;
+    if (embed.kind === "mux") {
+      player.replaceWith(
+        buildMuxPlayer(
+          document,
+          embed,
+          player.querySelector('meta[itemprop="name"]')?.getAttribute("content"),
+        ),
+      );
+      return;
+    }
     const iframe = document.createElement("iframe");
     configureEmbedIframe(iframe, embed, player.querySelector('meta[itemprop="name"]')?.getAttribute("content"));
     player.replaceWith(iframe);
@@ -121,6 +131,10 @@ function sanitizeArticleHtml(html: string, baseUrl: string): string {  // Feeds 
     const embed = getVideoEmbed(href);
     const parent = anchor.parentElement;
     if (!embed || !parent || parent.children.length !== 1 || parent.textContent?.trim() !== href) continue;
+    if (embed.kind === "mux") {
+      parent.replaceWith(buildMuxPlayer(document, embed));
+      continue;
+    }
     const iframe = document.createElement("iframe");
     configureEmbedIframe(iframe, embed);
     parent.replaceWith(iframe);

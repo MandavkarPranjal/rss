@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { useEffect, useRef } from "react";
-import { configureEmbedIframe, getVideoEmbed, sanitizeIframe } from "@/lib/article-embeds";
+import { buildMuxPlayer, configureEmbedIframe, getVideoEmbed, sanitizeIframe } from "@/lib/article-embeds";
 
 const SHIKI_LANGUAGES = [
   "bash",
@@ -33,6 +33,17 @@ const LANGUAGE_ALIASES: Record<string, (typeof SHIKI_LANGUAGES)[number]> = {
 };
 
 let highlighterPromise: Promise<Awaited<ReturnType<typeof import("shiki/bundle/web")["createHighlighter"]>>> | null = null;
+
+let muxPlayerPromise: Promise<unknown> | null = null;
+
+/** Register the <mux-player> custom element (side-effectful, client only). */
+function ensureMuxPlayer() {
+  muxPlayerPromise ??= import("@mux/mux-player").catch(() => {
+    // Videos stay as inert <mux-player> placeholders if the player fails to load.
+    muxPlayerPromise = null;
+  });
+  return muxPlayerPromise;
+}
 
 function getHighlighter() {
   highlighterPromise ??= import("shiki/bundle/web").then(({ createHighlighter }) =>
@@ -192,6 +203,10 @@ function enhanceArticleHtml(html: string, baseUrl?: string) {
     const parent = anchor.parentElement;
     if (!embed || !parent || parent.children.length !== 1 || parent.textContent?.trim() !== href) return;
 
+    if (embed.kind === "mux") {
+      parent.replaceWith(buildMuxPlayer(document, embed));
+      return;
+    }
     const frame = document.createElement("iframe");
     configureEmbedIframe(frame, embed);
     parent.replaceWith(frame);
@@ -211,6 +226,7 @@ export default function ArticleContent({ html, baseUrl }: { html: string; baseUr
   useEffect(() => {
     const root = contentRef.current;
     if (!root) return;
+    if (root.querySelector("mux-player")) void ensureMuxPlayer();
     const cleanups = addCopyControls(root);
     let cancelled = false;
     highlightCodeBlocks(root, () => cancelled).catch(() => {
