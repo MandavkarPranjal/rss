@@ -16,18 +16,26 @@ import { useSyncExternalStore } from "react";
 const STORAGE_KEY = "rss.mux-override-all";
 const CHANGE_EVENT = "rss:mux-override-all";
 
+/**
+ * Session fallback when storage is unavailable (sandboxed iframe,
+ * blocked cookies/storage). Always updated on set; read back only when the
+ * storage read itself throws.
+ */
+let memoryFallback = false;
+
 function readStored(): boolean {
-  if (typeof window === "undefined" || typeof window.localStorage === "undefined") return false;
   try {
+    if (typeof window === "undefined") return memoryFallback;
     return window.localStorage.getItem(STORAGE_KEY) === "1";
   } catch {
-    return false;
+    return memoryFallback;
   }
 }
 
 function subscribe(onChange: () => void): () => void {
   const onStorage = (event: StorageEvent) => {
-    if (event.key === STORAGE_KEY) onChange();
+    // `key === null` covers `localStorage.clear()` from another tab.
+    if (event.key === STORAGE_KEY || event.key === null) onChange();
   };
   window.addEventListener("storage", onStorage);
   window.addEventListener(CHANGE_EVENT, onChange);
@@ -50,10 +58,11 @@ export function getMuxOverrideAll(): boolean {
 }
 
 export function setMuxOverrideAll(value: boolean): void {
+  memoryFallback = value;
   try {
     window.localStorage.setItem(STORAGE_KEY, value ? "1" : "0");
   } catch {
-    // Preference stays in memory for this session if storage is unavailable.
+    // Storage unavailable — readers fall back to `memoryFallback` above.
   }
   window.dispatchEvent(new Event(CHANGE_EVENT));
 }

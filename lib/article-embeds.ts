@@ -39,7 +39,16 @@ export function getDirectMediaEmbed(urlValue: string, baseUrl?: string): Extract
   if (url.protocol !== "http:" && url.protocol !== "https:") return undefined;
   const ext = url.pathname.split("/").pop()?.split(".").pop()?.toLowerCase();
   if (!ext || !PLAYABLE_MEDIA_EXTENSIONS.includes(ext)) return undefined;
-  const fallback = decodeURIComponent(url.pathname.split("/").pop() || "").slice(0, 80) || "Video";
+  // Filenames come from untrusted feeds and may contain malformed
+  // percent-encoding (`video%.mp4`, `clip%zz.m3u8`) that makes
+  // `decodeURIComponent` throw — never let a title crash the render.
+  const rawName = url.pathname.split("/").pop() || "";
+  let fallback = "Video";
+  try {
+    fallback = decodeURIComponent(rawName).slice(0, 80) || "Video";
+  } catch {
+    fallback = "Video";
+  }
   return { kind: "mux", src: url.href, title: fallback };
 }
 
@@ -343,17 +352,16 @@ export function sanitizeIframe(
     return;
   }
 
-  // Direct media files are safe to frame (no interactive page inside), so
-  // preserve them as plain iframes. The reader upgrades them to <mux-player>
-  // client-side when the override toggle is on.
+  // Direct media files are NOT safe to keep as raw iframes: the media
+  // extension comes only from the URL path string, so a malicious feed can
+  // point `.../tracker.mp4` at a server that responds with HTML, which would
+  // then run in a framed context. Play them through <mux-player> instead —
+  // a <video> element loads the URL as media (never as an executable
+  // document), so arbitrary hosts stay safe without framing anything.
   const absoluteSrc = getAbsoluteHttpUrl(src, baseUrl);
   const direct = absoluteSrc ? getDirectMediaEmbed(absoluteSrc) : undefined;
-  if (direct && absoluteSrc) {
-    configureEmbedIframe(
-      frame,
-      { kind: "iframe", src: absoluteSrc, title: frame.getAttribute("title")?.trim() || direct.title },
-      frame.getAttribute("title"),
-    );
+  if (direct) {
+    frame.replaceWith(buildMuxPlayer(document, direct, frame.getAttribute("title")));
     return;
   }
 
