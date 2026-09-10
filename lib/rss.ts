@@ -569,26 +569,27 @@ async function enrichWithFullArticles(items: ParsedItem[]): Promise<ParsedItem[]
  * Snippets are rendered as plain text (article list) and as a text fallback
  * in the reader when an article has no body. They must never contain markup:
  * rss-parser's `contentSnippet` decodes `&lt;a href="javascript:..."&gt;` into
- * a real tag, and the `summary` fallback is raw HTML. Decode first (feeds
- * double-encode), then strip tags via textContent so the result is inert even
- * if passed to `dangerouslySetInnerHTML` by a stale caller.
+ * a real tag, and the `summary` fallback is raw HTML. Strip actual tags first
+ * via textContent, then decode the extracted text (feeds double-encode), so
+ * encoded literals such as `&lt;div&gt;` remain visible instead of becoming
+ * elements that get dropped. The result is inert even if passed to
+ * `dangerouslySetInnerHTML` by a stale caller.
  */
 function toPlainTextSnippet(value: string | null | undefined): string | undefined {
-  const decoded = decodeEntities(value ?? undefined);
-  if (!decoded) return undefined;
+  if (!value) return undefined;
   let text: string;
   try {
     // Keep word boundaries between block elements (`</p><p>` would otherwise
     // concatenate to "helloworld" via textContent).
-    const spaced = decoded.replace(
+    const spaced = value.replace(
       /<\/?(?:h[1-6]|p|br|ul|ol|li|blockquote|section|table|tr|div)[^>]*>/gi,
       " ",
     );
     text = new JSDOM(`<body>${spaced}</body>`).window.document.body.textContent ?? "";
   } catch {
-    text = decoded.replace(/<(?:.|\n)*?>/gm, "");
+    text = value.replace(/<(?:.|\n)*?>/gm, "");
   }
-  text = text.replace(/\s+/g, " ").trim();
+  text = decodeEntities(text).replace(/\s+/g, " ").trim();
   return text ? text.slice(0, 500) : undefined;
 }
 
