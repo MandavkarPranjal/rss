@@ -367,6 +367,103 @@ body {
   margin: 1.5em auto;
   filter: grayscale(25%) brightness(0.88);
 }
+.reader-table-wrap {
+  position: relative;
+  width: calc(100% + 2rem);
+  max-width: calc(100% + 2rem);
+  margin: 2rem -1rem;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #080808;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+  scrollbar-color: var(--line-strong) transparent;
+}
+.reader-table-wrap:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.reader-table-wrap::after {
+  position: sticky;
+  right: 0;
+  display: block;
+  width: 100%;
+  height: 0;
+  content: "";
+  pointer-events: none;
+  box-shadow: 12px 0 18px 8px rgba(0, 0, 0, 0.4);
+}
+.reader-body table {
+  width: 100%;
+  min-width: 34rem;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.82em;
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+}
+.reader-body caption {
+  padding: 0.85rem 1rem 0.7rem;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 550;
+  letter-spacing: -0.015em;
+  text-align: left;
+}
+.reader-body th,
+.reader-body td {
+  min-width: 7rem;
+  padding: 0.8rem 1rem;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+.reader-body th:last-child,
+.reader-body td:last-child {
+  border-right: 0;
+}
+.reader-body tbody tr:last-child td {
+  border-bottom: 0;
+}
+.reader-body thead th {
+  color: var(--ink);
+  background: #111111;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.025em;
+  white-space: nowrap;
+}
+.reader-body tbody td {
+  color: var(--ink-soft);
+  background: #080808;
+}
+.reader-body tbody tr:nth-child(even) td {
+  background: #0d0d0d;
+}
+.reader-body tbody tr:hover td {
+  color: var(--ink);
+  background: #141414;
+}
+.reader-body table a {
+  white-space: nowrap;
+}
+@media (min-width: 640px) {
+  .reader-table-wrap {
+    width: calc(100% + 4rem);
+    max-width: calc(100% + 4rem);
+    margin-inline: -2rem;
+  }
+}
+@media (min-width: 768px) {
+  .reader-table-wrap {
+    width: 100%;
+    max-width: 100%;
+    margin-inline: 0;
+  }
+}
 .reader-body iframe {
   display: block;
   width: 100%;

@@ -219,6 +219,20 @@ function enhanceArticleHtml(html: string, baseUrl?: string, muxOverrideAll = fal
     sanitizeIframe(frame, document, baseUrl, { muxOverrideAll });
   });
 
+  // Tables from feeds vary wildly in width. Keep the table itself semantic,
+  // but give it a dedicated scroll surface so wide data never pushes the
+  // reader viewport sideways on small screens.
+  document.querySelectorAll<HTMLTableElement>("table").forEach((table) => {
+    if (table.parentElement?.classList.contains("reader-table-wrap")) return;
+    const wrapper = document.createElement("div");
+    wrapper.className = "reader-table-wrap";
+    wrapper.setAttribute("role", "region");
+    wrapper.setAttribute("tabindex", "0");
+    wrapper.setAttribute("aria-label", "Scrollable table");
+    table.replaceWith(wrapper);
+    wrapper.append(table);
+  });
+
   // Ingest stores direct media neutrally as native <video>; upgrade to
   // <mux-player> at view time when the override preference is on.
   if (muxOverrideAll) {
