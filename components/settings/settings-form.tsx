@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { EnvelopeSimple, Fingerprint, Key, Plus, Trash } from "@phosphor-icons/react";
+import { EnvelopeSimple, Fingerprint, Key, MonitorPlay, Plus, Trash } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import { authClient, useSession } from "@/lib/auth-client";
+import { setMuxOverrideAll, useMuxOverrideAll } from "@/lib/playback-prefs";
 
 type Passkey = {
   id: string;
@@ -12,12 +13,13 @@ type Passkey = {
   aaguid?: string | null;
 };
 
-type SettingsSection = "password" | "email" | "passkeys";
+type SettingsSection = "password" | "email" | "passkeys" | "playback";
 
 const settingsSections = [
   ["password", "Password"],
   ["email", "Email"],
   ["passkeys", "Passkeys"],
+  ["playback", "Playback"],
 ] as const satisfies ReadonlyArray<readonly [SettingsSection, string]>;
 
 const inputCls =
@@ -75,7 +77,9 @@ export default function SettingsForm({ autoLoadPasskeys = true }: { autoLoadPass
     password: null,
     email: null,
     passkeys: null,
+    playback: null,
   });
+  const muxOverrideAll = useMuxOverrideAll();
 
   const loadSeqRef = useRef(0);
 
@@ -263,7 +267,7 @@ export default function SettingsForm({ autoLoadPasskeys = true }: { autoLoadPass
 
   return (
     <div className="space-y-5 sm:space-y-6">
-      <div className="grid grid-cols-3 gap-1 rounded-[6px] bg-[#F7F6F3] p-1 sm:hidden dark:bg-white/5" role="tablist" aria-label="Settings sections">
+      <div className="grid grid-cols-4 gap-1 rounded-[6px] bg-[#F7F6F3] p-1 sm:hidden dark:bg-white/5" role="tablist" aria-label="Settings sections">
         {settingsSections.map(([value, label]) => (
           <button
             key={value}
@@ -464,6 +468,46 @@ export default function SettingsForm({ autoLoadPasskeys = true }: { autoLoadPass
           </button>
         </form>
         <FieldError message={passkeysError} />
+      </section>
+
+      <section
+        id="settings-panel-playback"
+        role="tabpanel"
+        aria-labelledby="settings-tab-playback"
+        className={`${mobileSection === "playback" ? "block" : "hidden"} border-t border-[#EAEAEA] pt-4 sm:block sm:pt-5 dark:border-white/10`}
+      >
+        <h3 id="settings-playback" className="flex items-center gap-1.5 text-sm font-medium">
+          <MonitorPlay size={15} weight="bold" /> Video playback
+        </h3>
+        <p className="mt-1 text-[13px] text-[#787774]">
+          JW Player videos always play with Mux Player. Turn this on to also play direct video
+          files (.m3u8, .mp4, …) with Mux Player for a consistent experience. YouTube, Vimeo,
+          and other provider embeds keep their native players.
+        </p>
+        <div className="mt-3 flex items-center justify-between gap-3 rounded-[6px] border border-[#EAEAEA] px-3 py-2.5 dark:border-white/10">
+          <span className="text-sm font-medium" id="settings-mux-override-label">
+            Play all videos with Mux Player
+          </span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={muxOverrideAll}
+            aria-labelledby="settings-mux-override-label"
+            onClick={() => setMuxOverrideAll(!muxOverrideAll)}
+            className={`relative h-6 w-11 shrink-0 rounded-full transition ${
+              muxOverrideAll ? "bg-[#111111] dark:bg-[#ECECEA]" : "bg-[#EAEAEA] dark:bg-white/15"
+            }`}
+          >
+            <span
+              aria-hidden="true"
+              className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full shadow transition-transform ${
+                muxOverrideAll
+                  ? "translate-x-5 bg-white dark:bg-[#191918]"
+                  : "translate-x-0 bg-white dark:bg-white"
+              }`}
+            />
+          </button>
+        </div>
       </section>
     </div>
   );
