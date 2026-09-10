@@ -33,7 +33,7 @@ export default function TopBar({
           Feeds
         </button>
         <Link href="/unread" className="flex min-w-0 items-center gap-2.5">
-          <span className="flex h-8 w-8 items-center justify-center rounded-[4px] bg-[#1c1b19] text-[#fbfaf7]">
+          <span className="flex h-8 w-8 items-center justify-center rounded-[4px] bg-[#fafafa] text-black">
             <Newspaper size={16} weight="bold" />
           </span>
           <span className="font-editorial text-[22px] tracking-[-0.04em]">Ledger</span>
@@ -54,7 +54,7 @@ export default function TopBar({
             onChange={(e) => setQuery(e.target.value || null)}
             placeholder="Search articles"
             aria-label="Search articles"
-            className="w-full rounded-[3px] border border-[#ddd8ce] bg-[#ebe7df]/70 py-2 pr-14 pl-9 text-sm outline-none placeholder:text-[#817c73] focus:border-[#a84f35] focus:bg-[#fbfaf7]"
+            className="w-full rounded-[3px] border border-[#ddd8ce] bg-[#ebe7df]/70 py-2 pr-14 pl-9 text-sm outline-none placeholder:text-[#817c73] focus:border-white focus:bg-black"
           />
           <span className="absolute top-1/2 right-2.5 -translate-y-1/2">
             <kbd>⌘K</kbd>
@@ -69,7 +69,7 @@ export default function TopBar({
             type="button"
             onClick={onOpenSettings}
             title="Account settings"
-            className="inline-flex items-center gap-1.5 rounded-[3px] border border-[#c8c1b5] px-2.5 py-1.5 text-[13px] transition hover:bg-[#ebe7df] active:scale-[0.98]"
+            className="inline-flex items-center gap-1.5 rounded-[3px] border border-[#c8c1b5] px-2.5 py-1.5 text-[13px] transition hover:bg-white/10 active:scale-[0.98]"
           >
             <GearSix size={14} weight="bold" /> <span className="hidden sm:inline">Settings</span>
           </button>
@@ -86,7 +86,7 @@ export default function TopBar({
                 error: (error) => (error instanceof Error ? error.message : "Could not sign out"),
               });
             }}
-            className="inline-flex items-center gap-1.5 rounded-[3px] border border-[#c8c1b5] px-2.5 py-1.5 text-[13px] transition hover:bg-[#ebe7df] active:scale-[0.98]"
+            className="inline-flex items-center gap-1.5 rounded-[3px] border border-[#c8c1b5] px-2.5 py-1.5 text-[13px] transition hover:bg-white/10 active:scale-[0.98]"
           >
             <SignOut size={14} weight="bold" /> <span className="hidden sm:inline">Sign out</span>
           </button>

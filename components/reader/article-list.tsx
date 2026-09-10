@@ -180,7 +180,7 @@ export default function ArticleList({ feedId, filter, heading }: Props) {
         </div>
         <button
           onClick={markAllRead}
-          className="inline-flex shrink-0 items-center gap-1 text-xs text-[#817c73] underline decoration-[#c8c1b5] underline-offset-4 hover:text-[#a84f35]"
+          className="inline-flex shrink-0 items-center gap-1 text-xs text-[#817c73] underline decoration-[#c8c1b5] underline-offset-4 hover:text-white"
         >
           <Checks size={13} weight="bold" /> Mark read
         </button>
@@ -204,16 +204,16 @@ export default function ArticleList({ feedId, filter, heading }: Props) {
             <div
               key={a.id}
               style={{ "--index": Math.min(i, 3) } as React.CSSProperties}
-              className={`${fresh ? "reveal" : ""} row-lift border-b border-[#e5e0d7] px-6 py-5 ${selected ? "bg-[#ebe7df]" : "hover:bg-[#f4f1eb]"} ${a.isRead ? "opacity-55" : ""}`}
+              className={`${fresh ? "reveal" : ""} row-lift border-b border-[#e5e0d7] px-6 py-5 ${selected ? "bg-white/[0.06]" : "hover:bg-white/[0.03]"} ${a.isRead ? "opacity-55" : ""}`}
             >
               <div className="flex items-start gap-3">
                 {!a.isRead && (
-                  <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#1F6C9F]" aria-label="Unread" />
+                  <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-white" aria-label="Unread" />
                 )}
                 <button
                   onClick={() => openArticle(a)}
                   aria-current={selected ? true : undefined}
-                  className="min-w-0 flex-1 rounded-md text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1F6C9F]"
+                  className="min-w-0 flex-1 rounded-md text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
                 >
                   <p className="truncate font-mono text-[10px] uppercase tracking-[0.1em] text-[#817c73]">
                     {a.feedTitle ?? "Feed"} · {timeAgo(a.publishedAt)}
@@ -231,12 +231,12 @@ export default function ArticleList({ feedId, filter, heading }: Props) {
                   onClick={() => toggleStar(a)}
                   title={a.isStarred ? "Unstar" : "Star"}
                   aria-label={a.isStarred ? "Unstar article" : "Star article"}
-                  className="shrink-0 rounded-md p-1 transition hover:bg-[#F7F6F3] active:scale-[0.95] dark:hover:bg-white/10"
+                  className="shrink-0 rounded-md p-1 transition hover:bg-white/10 active:scale-[0.95]"
                 >
                   <Star
                     size={16}
                     weight={a.isStarred ? "fill" : "bold"}
-                    className={a.isStarred ? "text-[#956400]" : "text-[#E0DED9] dark:text-white/20"}
+                    className={a.isStarred ? "text-white" : "text-white/20"}
                   />
                 </button>
               </div>

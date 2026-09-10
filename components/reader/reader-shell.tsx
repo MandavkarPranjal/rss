@@ -109,7 +109,7 @@ export default function ReaderShell({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="paper-grain flex h-screen flex-col text-[#1c1b19]">
+    <div className="paper-grain flex h-screen flex-col bg-black text-[#f2f2f2]">
       <div
         aria-hidden={drawerOpen || settingsOpen || undefined}
         inert={drawerOpen || settingsOpen || undefined}
@@ -135,7 +135,7 @@ export default function ReaderShell({ children }: { children: ReactNode }) {
         inert={drawerOpen || settingsOpen || undefined}
         className="flex min-h-0 min-w-0 flex-1"
       >
-        <aside className="hidden w-72 shrink-0 flex-col border-r border-[#ddd8ce] bg-[#ebe7df] lg:flex">
+        <aside className="hidden w-72 shrink-0 flex-col border-r border-white/[0.08] bg-black lg:flex">
           <FeedSidebar />
         </aside>
         {children}

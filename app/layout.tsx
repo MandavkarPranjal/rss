@@ -30,7 +30,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} ${display.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-[#121211] text-[#e8e4dc]">
+      <body className="min-h-full flex flex-col bg-black text-[#f2f2f2]">
         <NuqsAdapter>
           {children}
           <Toaster />
