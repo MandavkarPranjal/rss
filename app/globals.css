@@ -133,6 +133,22 @@
   border-color: var(--line-strong) !important;
 }
 
+/* State variants must win over the base shims above. An !important base
+   shim matches the element in every state, so it suppresses Tailwind's
+   :hover utilities on the same element (e.g. hover:bg-[#F7F6F3] never
+   rendered). NOTE: simply dropping !important would NOT fix this — these
+   shims are unlayered author CSS and Tailwind v4 utilities are layered, so
+   unlayered still wins for normal declarations. Explicit :hover overrides
+   (higher specificity + !important) restore the hover states in
+   vantablack tones. */
+[class*="hover:bg-[#a84f35]"]:hover {
+  background-color: #e5e5e5 !important;
+}
+
+[class*="hover:bg-[#F7F6F3]"]:hover {
+  background-color: rgba(255, 255, 255, 0.06) !important;
+}
+
 html {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
