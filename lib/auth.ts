@@ -54,6 +54,12 @@ export const auth = betterAuth({
   },
   session: {
     expiresIn: 60 * 60 * 24 * 7, // 7 days
+    // Avoid a DB hit on every API call (requireUser -> getSession):
+    // short-lived signed cookie, refreshes in background.
+    cookieCache: {
+      enabled: true,
+      maxAge: 5 * 60,
+    },
   },
   trustedOrigins: env.TRUSTED_ORIGINS?.split(",").map((o) => o.trim()).filter(Boolean),
 });
