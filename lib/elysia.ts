@@ -4,6 +4,7 @@ import { and, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import { auth } from "./auth";
 import { db } from "./db";
 import { article, feed } from "./db/schema";
+import { decodeEntities } from "./decode-entities";
 import { fetchFeed, normalizeFeedUrl } from "./rss";
 import { refreshFeed } from "./feed-refresh";
 
@@ -37,7 +38,14 @@ export const rssApi = new Elysia({ prefix: "/api/rss" })
       .where(and(eq(article.userId, user.id), eq(article.isRead, false)))
       .groupBy(article.feedId);
     const byFeed = new Map(counts.map((c) => [c.feedId, c.count]));
-    return feeds.map((f) => ({ ...f, unreadCount: byFeed.get(f.id) ?? 0 }));
+    // Decode on read so rows ingested before entity-decoding still render
+    // `'` instead of a literal `&#8217;`.
+    return feeds.map((f) => ({
+      ...f,
+      title: decodeEntities(f.title),
+      description: f.description ? decodeEntities(f.description) : f.description,
+      unreadCount: byFeed.get(f.id) ?? 0,
+    }));
   })
 
   .post(
@@ -139,7 +147,13 @@ export const rssApi = new Elysia({ prefix: "/api/rss" })
       .orderBy(desc(article.publishedAt), desc(article.createdAt))
       .limit(limit)
       .offset(offset);
-    return rows;
+    return rows.map((r) => ({
+      ...r,
+      title: decodeEntities(r.title),
+      snippet: r.snippet ? decodeEntities(r.snippet) : r.snippet,
+      author: r.author ? decodeEntities(r.author) : r.author,
+      feedTitle: r.feedTitle ? decodeEntities(r.feedTitle) : r.feedTitle,
+    }));
   })
 
   // Full body for one article — list endpoint omits `content` on purpose
@@ -168,7 +182,14 @@ export const rssApi = new Elysia({ prefix: "/api/rss" })
       .where(and(eq(article.id, params.id), eq(article.userId, user.id)))
       .limit(1);
     if (rows.length === 0) return Response.json({ error: "Not found" }, { status: 404 });
-    return rows[0];
+    const row = rows[0];
+    return {
+      ...row,
+      title: decodeEntities(row.title),
+      snippet: row.snippet ? decodeEntities(row.snippet) : row.snippet,
+      author: row.author ? decodeEntities(row.author) : row.author,
+      feedTitle: row.feedTitle ? decodeEntities(row.feedTitle) : row.feedTitle,
+    };
   })
 
   .patch(

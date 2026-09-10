@@ -2,6 +2,7 @@ import { Readability } from "@mozilla/readability";
 import { JSDOM } from "jsdom";
 import Parser from "rss-parser";
 import { configureEmbedIframe, getVideoEmbed, sanitizeIframe } from "./article-embeds";
+import { decodeEntities } from "./decode-entities";
 import { fetchPublicText } from "./safe-fetch";
 
 const parser = new Parser({
@@ -592,13 +593,18 @@ export async function fetchFeed(rawUrl: string): Promise<ParsedFeed> {
     // Body fallback resolves against the article link, feed candidates
     // against the feed URL — same split as Feeder's feedBaseUrl/linkToHtml.
     const thumbnail = resolveItemThumbnail(item, rawHtml, finalUrl, link ?? finalUrl);
+    // rss-parser leaves entities encoded when feeds wrap titles in CDATA or
+    // double-encode them (`&amp;#8217;`). React renders strings verbatim, so
+    // decode here or `&#8217;` shows up literally in the UI.
+    const rawSnippet =
+      item.contentSnippet ?? item["content:encodedSnippet"] ?? item.summary;
     return {
       guid: item.guid ?? item.id ?? link ?? `${finalUrl}#${i}`,
-      title: item.title ?? "(untitled)",
+      title: decodeEntities(item.title ?? "(untitled)"),
       link,
-      snippet: (item.contentSnippet ?? item["content:encodedSnippet"] ?? item.summary)?.slice(0, 500),
+      snippet: decodeEntities(rawSnippet ?? undefined)?.slice(0, 500) ?? undefined,
       content,
-      author: item.creator ?? item.author,
+      author: decodeEntities(item.creator ?? item.author ?? undefined) ?? undefined,
       imageUrl: thumbnail.url,
       hasFeedImage: thumbnail.hasFeedImage,
       imageFromBody: thumbnail.fromBody,
@@ -607,9 +613,9 @@ export async function fetchFeed(rawUrl: string): Promise<ParsedFeed> {
   });
   await enrichWithFullArticles(items);
   return {
-    title: parsed.title ?? new URL(finalUrl).hostname,
+    title: decodeEntities(parsed.title ?? new URL(finalUrl).hostname),
     siteUrl: parsed.link,
-    description: parsed.description,
+    description: decodeEntities(parsed.description ?? undefined) ?? undefined,
     items,
   };
 }
