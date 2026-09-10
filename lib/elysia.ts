@@ -38,26 +38,40 @@ function classicEntityNames(encoded: string): string {
 }
 
 /**
+ * ASCII characters feeds commonly entity-encode (`&amp;`, `&lt;`, `&#39;`,
+ * ...). The numeric variants below encode these instead of preserving them,
+ * so searching displayed text also matches legacy numeric storage.
+ */
+const ENTITY_SENSITIVE_ASCII = new Set(["&", "<", ">", '"', "'"]);
+
+function numericEntityVariant(value: string, radix: 10 | 16): string {
+  return Array.from(value, (ch) => {
+    const code = ch.codePointAt(0) ?? 0;
+    if (ENTITY_SENSITIVE_ASCII.has(ch) || code < 0x20 || code > 0x7e) {
+      return radix === 10 ? `&#${code};` : `&#x${code.toString(16)};`;
+    }
+    return ch;
+  }).join("");
+}
+
+/**
  * Legacy rows ingested before entity-decoding store raw entities
  * (`It&#8217;s`) while reads display decoded text (`It's`). Searching the
  * displayed text would miss those rows, so match the query in every plausible
  * stored spelling: as typed, decoded, entity-named (both `entities` and
- * classic spellings), decimal numeric, and hex numeric. Each variant encodes
- * the whole query at once, so multi-entity queries (e.g. `&` plus `’`) match
- * too. Single-encoded forms cover real legacy storage (rss-parser already
- * decoded one layer on ingest, so double-encoded forms don't occur).
- * Plain-ASCII queries dedupe to the original single predicate.
+ * classic spellings), decimal numeric, and hex numeric — plus the
+ * double-encoded (`&amp;`-escaped) form of each for rows stored with two
+ * layers. Each variant encodes the whole query at once, so multi-entity
+ * queries (e.g. `&` plus `’`) match too. Plain-ASCII queries dedupe to the
+ * original single predicate.
  */
 function encodedQueryVariants(query: string): string[] {
   const decoded = decodeEntities(query);
   const named = encodeHTML(decoded);
-  const decimal = Array.from(decoded, (ch) =>
-    /^[\x20-\x7E]$/.test(ch) ? ch : `&#${ch.codePointAt(0)};`,
-  ).join("");
-  const hex = Array.from(decoded, (ch) =>
-    /^[\x20-\x7E]$/.test(ch) ? ch : `&#x${(ch.codePointAt(0) ?? 0).toString(16)};`,
-  ).join("");
-  return [...new Set([query, decoded, named, classicEntityNames(named), decimal, hex])];
+  const decimal = numericEntityVariant(decoded, 10);
+  const hex = numericEntityVariant(decoded, 16);
+  const base = [...new Set([query, decoded, named, classicEntityNames(named), decimal, hex])];
+  return [...new Set([...base, ...base.map((variant) => variant.replace(/&/g, "&amp;"))])];
 }
 
 export const rssApi = new Elysia({ prefix: "/api/rss" })
