@@ -153,7 +153,7 @@ export default function FeedSidebar({ onNavigate }: { onNavigate?: () => void })
   return (
     <div className="flex h-full flex-col">
       <div className="p-4">
-        <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-[#787774]">Library</p>
+        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#817c73]">Your reading desk</p>
         <form onSubmit={addFeed} className="mt-3">
           <label htmlFor="feed-url" className="mb-1.5 block text-[13px] font-medium">
             Follow a new feed
@@ -164,11 +164,11 @@ export default function FeedSidebar({ onNavigate }: { onNavigate?: () => void })
               value={newUrl}
               onChange={(e) => setNewUrl(e.target.value)}
               placeholder="https://example.com/feed.xml"
-              className="min-w-0 flex-1 rounded-[6px] border border-[#EAEAEA] bg-white px-2.5 py-2 text-[13px] outline-none placeholder:text-[#787774] focus:border-[#111111] dark:border-white/10 dark:bg-[#201F1E]"
+              className="min-w-0 flex-1 rounded-[3px] border border-[#c8c1b5] bg-[#fbfaf7] px-2.5 py-2 text-[13px] outline-none placeholder:text-[#817c73] focus:border-[#a84f35]"
             />
             <button
               disabled={loading}
-              className="inline-flex shrink-0 items-center gap-1 rounded-[6px] bg-[#111111] px-3 py-2 text-[13px] font-medium text-white transition hover:bg-[#333333] active:scale-[0.98] disabled:opacity-50 dark:bg-[#ECECEA] dark:text-[#191918]"
+              className="inline-flex shrink-0 items-center gap-1 rounded-[3px] bg-[#1c1b19] px-3 py-2 text-[13px] font-medium text-[#fbfaf7] transition hover:bg-[#a84f35] active:scale-[0.98] disabled:opacity-50"
             >
               <Plus size={13} weight="bold" /> Add
             </button>
@@ -190,10 +190,10 @@ export default function FeedSidebar({ onNavigate }: { onNavigate?: () => void })
                   setFeedFilter(f);
                   onNavigate?.();
                 }}
-                className={`rounded-full px-3 py-1 text-xs font-medium uppercase tracking-[0.05em] transition active:scale-[0.98] ${
+                className={`rounded-[3px] border px-3 py-1 text-xs font-medium uppercase tracking-[0.05em] transition active:scale-[0.98] ${
                   effectiveFilter === f
-                    ? "bg-[#111111] text-white dark:bg-[#ECECEA] dark:text-[#191918]"
-                    : "border border-[#EAEAEA] bg-white text-[#787774] hover:text-[#111111] dark:border-white/10 dark:bg-transparent dark:hover:text-white"
+                    ? "border-[#a84f35] bg-[#a84f35] font-semibold text-white shadow-[0_2px_8px_rgba(168,79,53,0.25)]"
+                    : "border-[#c8c1b5] bg-[#fbfaf7]/50 text-[#5f5a52] hover:border-[#a84f35] hover:text-[#1c1b19] dark:border-white/20 dark:bg-white/5 dark:text-[#b8b1a8] dark:hover:border-[#c26b4c] dark:hover:text-white"
                 }`}
               >
                 {f}
@@ -204,11 +204,12 @@ export default function FeedSidebar({ onNavigate }: { onNavigate?: () => void })
                 href={filterHref(f, query)}
                 role="tab"
                 aria-selected={effectiveFilter === f}
+                aria-current={effectiveFilter === f ? "page" : undefined}
                 onClick={onNavigate}
-                className={`rounded-full px-3 py-1 text-xs font-medium uppercase tracking-[0.05em] transition active:scale-[0.98] ${
+                className={`rounded-[3px] border px-3 py-1 text-xs font-medium uppercase tracking-[0.05em] transition active:scale-[0.98] ${
                   effectiveFilter === f
-                    ? "bg-[#111111] text-white dark:bg-[#ECECEA] dark:text-[#191918]"
-                    : "border border-[#EAEAEA] bg-white text-[#787774] hover:text-[#111111] dark:border-white/10 dark:bg-transparent dark:hover:text-white"
+                    ? "border-[#a84f35] bg-[#a84f35] font-semibold text-white shadow-[0_2px_8px_rgba(168,79,53,0.25)]"
+                    : "border-[#c8c1b5] bg-[#fbfaf7]/50 text-[#5f5a52] hover:border-[#a84f35] hover:text-[#1c1b19] dark:border-white/20 dark:bg-white/5 dark:text-[#b8b1a8] dark:hover:border-[#c26b4c] dark:hover:text-white"
                 }`}
               >
                 {f}

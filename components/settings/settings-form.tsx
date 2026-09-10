@@ -12,6 +12,8 @@ type Passkey = {
   aaguid?: string | null;
 };
 
+type SettingsSection = "password" | "email" | "passkeys";
+
 const inputCls =
   "w-full rounded-[6px] border border-[#EAEAEA] bg-[#FBFBFA] px-3 py-2 text-sm outline-none placeholder:text-[#787774] focus:border-[#111111] focus:bg-white dark:border-white/10 dark:bg-white/5 dark:focus:bg-transparent";
 
@@ -62,6 +64,7 @@ export default function SettingsForm({ autoLoadPasskeys = true }: { autoLoadPass
   const [passkeyName, setPasskeyName] = useState("");
   const [addingPasskey, setAddingPasskey] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [mobileSection, setMobileSection] = useState<SettingsSection>("password");
 
   const loadSeqRef = useRef(0);
 
@@ -219,12 +222,38 @@ export default function SettingsForm({ autoLoadPasskeys = true }: { autoLoadPass
   };
 
   return (
-    <div className="space-y-6">
-      <section aria-labelledby="settings-password">
+    <div className="space-y-5 sm:space-y-6">
+      <div className="grid grid-cols-3 gap-1 rounded-[6px] bg-[#F7F6F3] p-1 sm:hidden dark:bg-white/5" role="tablist" aria-label="Settings sections">
+        {([
+          ["password", "Password"],
+          ["email", "Email"],
+          ["passkeys", "Passkeys"],
+        ] as const).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            role="tab"
+            aria-selected={mobileSection === value}
+            onClick={() => setMobileSection(value)}
+            className={`rounded-[4px] px-2 py-1.5 text-[12px] font-medium transition active:scale-[0.98] ${
+              mobileSection === value
+                ? "bg-white text-[#111111] shadow-sm dark:bg-[#343230] dark:text-white"
+                : "text-[#787774] hover:text-[#111111] dark:hover:text-white"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <section
+        aria-labelledby="settings-password"
+        className={mobileSection === "password" ? "block sm:block" : "hidden sm:block"}
+      >
         <h3 id="settings-password" className="flex items-center gap-1.5 text-sm font-medium">
           <Key size={15} weight="bold" /> Change password
         </h3>
-        <form onSubmit={submitPassword} className="mt-3 space-y-3">
+        <form onSubmit={submitPassword} className="mt-2.5 space-y-2.5 sm:mt-3 sm:space-y-3">
           <div>
             <label htmlFor="settings-current-password" className={labelCls}>
               Current password
@@ -281,7 +310,10 @@ export default function SettingsForm({ autoLoadPasskeys = true }: { autoLoadPass
         </form>
       </section>
 
-      <section aria-labelledby="settings-email" className="border-t border-[#EAEAEA] pt-5 dark:border-white/10">
+      <section
+        aria-labelledby="settings-email"
+        className={`${mobileSection === "email" ? "block" : "hidden"} border-t border-[#EAEAEA] pt-4 sm:block sm:pt-5 dark:border-white/10`}
+      >
         <h3 id="settings-email" className="flex items-center gap-1.5 text-sm font-medium">
           <EnvelopeSimple size={15} weight="bold" /> Primary email
         </h3>
@@ -289,7 +321,7 @@ export default function SettingsForm({ autoLoadPasskeys = true }: { autoLoadPass
           Currently{" "}
           <span className="font-medium text-[#111111] dark:text-white">{session?.user.email}</span>
         </p>
-        <form onSubmit={submitEmail} className="mt-3 space-y-3">
+        <form onSubmit={submitEmail} className="mt-2.5 space-y-2.5 sm:mt-3 sm:space-y-3">
           <div>
             <label htmlFor="settings-new-email" className={labelCls}>
               New email
@@ -316,7 +348,10 @@ export default function SettingsForm({ autoLoadPasskeys = true }: { autoLoadPass
         </form>
       </section>
 
-      <section aria-labelledby="settings-passkeys" className="border-t border-[#EAEAEA] pt-5 dark:border-white/10">
+      <section
+        aria-labelledby="settings-passkeys"
+        className={`${mobileSection === "passkeys" ? "block" : "hidden"} border-t border-[#EAEAEA] pt-4 sm:block sm:pt-5 dark:border-white/10`}
+      >
         <h3 id="settings-passkeys" className="flex items-center gap-1.5 text-sm font-medium">
           <Fingerprint size={15} weight="bold" /> Passkeys
         </h3>

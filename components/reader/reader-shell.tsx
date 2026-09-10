@@ -102,14 +102,14 @@ export default function ReaderShell({ children }: { children: ReactNode }) {
 
   if (isPending || !session) {
     return (
-      <div className="flex flex-1 items-center justify-center bg-[#FBFBFA] p-10 dark:bg-[#191918]">
+      <div className="paper-grain flex flex-1 items-center justify-center p-10">
         <p className="text-sm text-[#787774]">Loading…</p>
       </div>
     );
   }
 
   return (
-    <div className="flex h-screen flex-col bg-[#FBFBFA] text-[#111111] dark:bg-[#191918] dark:text-[#ECECEA]">
+    <div className="paper-grain flex h-screen flex-col text-[#1c1b19]">
       <div
         aria-hidden={drawerOpen || settingsOpen || undefined}
         inert={drawerOpen || settingsOpen || undefined}
@@ -124,7 +124,7 @@ export default function ReaderShell({ children }: { children: ReactNode }) {
         <div
           aria-hidden={drawerOpen || settingsOpen || undefined}
           inert={drawerOpen || settingsOpen || undefined}
-          className="shrink-0 border-b border-[#EAEAEA] bg-[#FDEBEC] px-5 py-2 text-[13px] text-[#9F2F2D] dark:border-white/10 dark:bg-[#9F2F2D]/20 dark:text-[#F3B8B6]"
+          className="shrink-0 border-b border-[#d6b6aa] bg-[#f0ddd4] px-5 py-2 text-[13px] text-[#8e3f2a]"
         >
           {feedsError}
         </div>
@@ -135,7 +135,7 @@ export default function ReaderShell({ children }: { children: ReactNode }) {
         inert={drawerOpen || settingsOpen || undefined}
         className="flex min-h-0 min-w-0 flex-1"
       >
-        <aside className="hidden w-72 shrink-0 flex-col border-r border-[#EAEAEA] bg-[#F7F6F3] lg:flex dark:border-white/10 dark:bg-[#232220]">
+        <aside className="hidden w-72 shrink-0 flex-col border-r border-[#ddd8ce] bg-[#ebe7df] lg:flex">
           <FeedSidebar />
         </aside>
         {children}
