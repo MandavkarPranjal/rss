@@ -54,8 +54,11 @@ export const auth = betterAuth({
   },
   session: {
     expiresIn: 60 * 60 * 24 * 7, // 7 days
-    // Avoid a DB hit on every API call (requireUser -> getSession):
-    // short-lived signed cookie, refreshes in background.
+    // Avoid a DB hit on every GET (requireUser -> getSession): the session is
+    // served from the signed cookie for 5 minutes, then revalidated from the
+    // database on expiry. `refreshCache` stays off on purpose — Better Auth
+    // disables it for stateful (database) setups. Reads accept the resulting
+    // 5-minute revocation window; mutations bypass the cache (see requireUser).
     cookieCache: {
       enabled: true,
       maxAge: 5 * 60,

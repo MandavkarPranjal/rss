@@ -10,7 +10,13 @@ import { fetchFeed, normalizeFeedUrl } from "./rss";
 import { refreshFeed } from "./feed-refresh";
 
 async function requireUser(request: Request) {
-  const session = await auth.api.getSession({ headers: request.headers });
+  // GETs use the 5-minute signed cookie cache (see auth.ts); mutations bypass
+  // it so a session revoked elsewhere can't keep writing for up to 5 minutes.
+  const authoritative = request.method !== "GET";
+  const session = await auth.api.getSession({
+    headers: request.headers,
+    ...(authoritative ? { query: { disableCookieCache: true } } : {}),
+  });
   if (!session?.user) throw new Error("UNAUTHORIZED");
   return session.user;
 }
