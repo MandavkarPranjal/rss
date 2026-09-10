@@ -9,24 +9,26 @@
 }
 
 :root {
-  --background: #fbfbfa;
-  --foreground: #111111;
-  --paper: #ffffff;
-  --bone: #f7f6f3;
-  --ink: #111111;
-  --ink-soft: #2f3437;
-  --muted: #787774;
-  --line: #eaeaea;
-  --line-strong: #e0ded9;
-  /* spot pastels */
-  --pastel-red-bg: #fdebec;
-  --pastel-red-tx: #9f2f2d;
-  --pastel-blue-bg: #e1f3fe;
-  --pastel-blue-tx: #1f6c9f;
-  --pastel-green-bg: #edf3ec;
-  --pastel-green-tx: #346538;
-  --pastel-yellow-bg: #fbf3db;
-  --pastel-yellow-tx: #956400;
+  color-scheme: dark;
+  --background: #121211;
+  --foreground: #e8e4dc;
+  --paper: #1a1917;
+  --bone: #211f1c;
+  --ink: #e8e4dc;
+  --ink-soft: #c4beb4;
+  --muted: #918b82;
+  --line: rgba(232, 228, 220, 0.13);
+  --line-strong: rgba(232, 228, 220, 0.22);
+  --accent: #c26b4c;
+  --accent-soft: #3a241d;
+  --pastel-red-bg: #f0ddd4;
+  --pastel-red-tx: #8e3f2a;
+  --pastel-blue-bg: #e8e5dc;
+  --pastel-blue-tx: #5d665f;
+  --pastel-green-bg: #e2e7dc;
+  --pastel-green-tx: #4d6348;
+  --pastel-yellow-bg: #eee3c8;
+  --pastel-yellow-tx: #80652f;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -51,6 +53,26 @@
   }
 }
 
+/* Ledger is a dark-first reader. These guards neutralize a few legacy light
+   utility classes that otherwise win outside the OS dark-mode media query. */
+[class*="bg-white"],
+[class*="bg-[#fbfaf7]"],
+[class*="bg-[#F7F6F3]"],
+[class*="bg-[#FBFBFA]"] {
+  background-color: var(--paper) !important;
+}
+
+[class*="bg-[#ebe7df]"],
+[class*="bg-[#232220]"],
+[class*="bg-[#201F1E]"] {
+  background-color: var(--bone) !important;
+}
+
+[class*="text-[#1c1b19]"],
+[class*="text-[#111111]"] {
+  color: var(--ink) !important;
+}
+
 html {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -62,13 +84,29 @@ body {
   font-family: var(--font-sans);
   line-height: 1.6;
   font-feature-settings: "ss01", "cv05", "cv11";
+  background-image: radial-gradient(circle at 14% 0%, rgba(255,255,255,.035), transparent 32rem), url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.045'/%3E%3C/svg%3E");
 }
 
 /* Dev-blog display helper (headings, logo) */
 .font-editorial {
   font-family: var(--font-display);
   letter-spacing: -0.03em;
-  line-height: 1.05;
+  line-height: 0.98;
+  font-weight: 550;
+}
+
+.reader-chrome {
+  box-shadow: 0 1px 0 rgba(28, 27, 25, .05), 0 12px 36px rgba(95, 79, 61, .04);
+}
+
+.paper-grain {
+  background-color: var(--paper);
+  background-image: linear-gradient(rgba(255,255,255,.025), rgba(255,255,255,.025)), url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.035'/%3E%3C/svg%3E");
+}
+
+.reading-surface {
+  background: #171716;
+  box-shadow: inset 1px 0 0 rgba(255,255,255,.035), inset -1px 0 0 rgba(255,255,255,.035);
 }
 
 /* Quiet scrollbars */
@@ -116,7 +154,7 @@ body {
     box-shadow 200ms ease;
 }
 .row-lift:hover {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  box-shadow: inset 3px 0 0 var(--accent), 0 2px 8px rgba(78, 64, 48, 0.05);
 }
 
 /* Ambient hero wash for reader empty state */
@@ -151,7 +189,7 @@ body {
   height: 100%;
   transform: scaleX(var(--reading-progress));
   transform-origin: left center;
-  background: var(--pastel-blue-tx);
+  background: var(--accent);
 }
 @media (prefers-color-scheme: dark) {
   .reading-progress-fill {
@@ -206,13 +244,19 @@ body {
 
 .reader-body {
   color: var(--ink-soft);
-  font-size: 1.02rem;
-  line-height: 1.75;
+  font-size: clamp(1.06rem, 1rem + 0.3vw, 1.18rem);
+  line-height: 1.8;
+  max-width: 68ch;
+  margin-inline: auto;
   min-width: 0;
   overflow-wrap: anywhere;
 }
+.reader-body strong,
+.reader-body b {
+  color: var(--ink);
+}
 .reader-body p {
-  margin: 1.1em 0;
+  margin: 1.2em 0;
 }
 .reader-body h1,
 .reader-body h2,
@@ -224,10 +268,10 @@ body {
   margin: 1.6em 0 0.5em;
 }
 .reader-body h2 {
-  font-size: 1.5rem;
+  font-size: 1.6rem;
 }
 .reader-body h3 {
-  font-size: 1.25rem;
+  font-size: 1.32rem;
 }
 .reader-body a {
   color: var(--ink);
@@ -282,8 +326,8 @@ body {
   padding-left: 1rem;
   margin: 1.5em 0;
   color: var(--muted);
-  font-size: 1.05rem;
-  line-height: 1.6;
+  font-size: 1.1rem;
+  line-height: 1.65;
 }
 .reader-body pre,
 .reader-body code {
@@ -364,7 +408,7 @@ body {
   }
 }
 .reader-body :not(pre) > code {
-  background: var(--pastel-yellow-bg);
+  background: #29241d;
   color: var(--ink);
   padding: 0.1em 0.35em;
   border-radius: 4px;
@@ -388,4 +432,63 @@ kbd {
   outline: 2px solid var(--ink);
   outline-offset: 2px;
   border-radius: 4px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --background: #121211;
+    --foreground: #e8e4dc;
+    --paper: #1a1917;
+    --bone: #211f1c;
+    --ink: #e8e4dc;
+    --ink-soft: #c4beb4;
+    --muted: #918b82;
+    --line: rgba(232, 228, 220, 0.13);
+    --line-strong: rgba(232, 228, 220, 0.22);
+    --accent: #c26b4c;
+    --accent-soft: #3a241d;
+  }
+
+  body {
+    background-color: var(--background) !important;
+    color: var(--foreground) !important;
+  }
+
+  [class*="dark:bg"] {
+    background-color: var(--paper) !important;
+  }
+
+  [class*="dark:border"] {
+    border-color: var(--line) !important;
+  }
+
+  [class*="dark:text"] {
+    color: var(--ink) !important;
+  }
+
+  [class*="bg-[#fbfaf7]"],
+  [class*="bg-white"] {
+    background-color: var(--paper) !important;
+  }
+
+  [class*="bg-[#ebe7df]"],
+  [class*="bg-[#f7f6f3]"] {
+    background-color: var(--bone) !important;
+  }
+
+  [class*="bg-[#f4f1eb]"] {
+    background-color: var(--background) !important;
+  }
+
+  [class*="text-[#1c1b19]"],
+  [class*="text-[#111111]"] {
+    color: var(--ink) !important;
+  }
+
+  [class*="border-[#ddd8ce]"],
+  [class*="border-[#e5e0d7]"],
+  [class*="border-[#c8c1b5]"] {
+    border-color: var(--line) !important;
+  }
 }

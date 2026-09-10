@@ -25,19 +25,19 @@ export default function TopBar({
 
   return (
     <>
-      <header className="flex h-16 shrink-0 items-center gap-3 border-b border-[#EAEAEA] bg-white/85 px-4 backdrop-blur sm:px-5 dark:border-white/10 dark:bg-[#201F1E]/85">
+      <header className="reader-chrome flex h-[72px] shrink-0 items-center gap-3 border-b border-[#ddd8ce] bg-[#fbfaf7]/90 px-4 backdrop-blur sm:px-7">
         <button
-          className="rounded-md border border-[#EAEAEA] px-2 py-1 text-xs lg:hidden dark:border-white/10"
+          className="rounded-md border border-[#c8c1b5] px-2 py-1 text-xs lg:hidden"
           onClick={onOpenFeeds}
         >
           Feeds
         </button>
         <Link href="/unread" className="flex min-w-0 items-center gap-2.5">
-          <span className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-[#111111] text-white dark:bg-[#ECECEA] dark:text-[#191918]">
+          <span className="flex h-8 w-8 items-center justify-center rounded-[4px] bg-[#1c1b19] text-[#fbfaf7]">
             <Newspaper size={16} weight="bold" />
           </span>
-          <span className="font-editorial text-[19px] font-medium tracking-tight">Ledger</span>
-          <span className="hidden rounded-full bg-[#FBF3DB] px-2.5 py-0.5 font-mono text-[11px] uppercase tracking-[0.05em] text-[#956400] sm:inline-block dark:bg-[#956400]/25 dark:text-[#E8C26A]">
+          <span className="font-editorial text-[22px] tracking-[-0.04em]">Ledger</span>
+          <span className="hidden border-l border-[#c8c1b5] pl-3 font-mono text-[10px] uppercase tracking-[0.12em] text-[#817c73] sm:inline-block">
             {totalUnread} unread
           </span>
         </Link>
@@ -54,7 +54,7 @@ export default function TopBar({
             onChange={(e) => setQuery(e.target.value || null)}
             placeholder="Search articles"
             aria-label="Search articles"
-            className="w-full rounded-[6px] border border-[#EAEAEA] bg-[#F7F6F3] py-2 pr-14 pl-9 text-sm outline-none placeholder:text-[#787774] focus:border-[#111111] focus:bg-white dark:border-white/10 dark:bg-white/5 dark:focus:bg-transparent"
+            className="w-full rounded-[3px] border border-[#ddd8ce] bg-[#ebe7df]/70 py-2 pr-14 pl-9 text-sm outline-none placeholder:text-[#817c73] focus:border-[#a84f35] focus:bg-[#fbfaf7]"
           />
           <span className="absolute top-1/2 right-2.5 -translate-y-1/2">
             <kbd>⌘K</kbd>
@@ -69,7 +69,7 @@ export default function TopBar({
             type="button"
             onClick={onOpenSettings}
             title="Account settings"
-            className="inline-flex items-center gap-1.5 rounded-[6px] border border-[#EAEAEA] px-2.5 py-1.5 text-[13px] transition hover:bg-[#F7F6F3] active:scale-[0.98] dark:border-white/10 dark:hover:bg-white/5"
+            className="inline-flex items-center gap-1.5 rounded-[3px] border border-[#c8c1b5] px-2.5 py-1.5 text-[13px] transition hover:bg-[#ebe7df] active:scale-[0.98]"
           >
             <GearSix size={14} weight="bold" /> <span className="hidden sm:inline">Settings</span>
           </button>
@@ -86,7 +86,7 @@ export default function TopBar({
                 error: (error) => (error instanceof Error ? error.message : "Could not sign out"),
               });
             }}
-            className="inline-flex items-center gap-1.5 rounded-[6px] border border-[#EAEAEA] px-2.5 py-1.5 text-[13px] transition hover:bg-[#F7F6F3] active:scale-[0.98] dark:border-white/10 dark:hover:bg-white/5"
+            className="inline-flex items-center gap-1.5 rounded-[3px] border border-[#c8c1b5] px-2.5 py-1.5 text-[13px] transition hover:bg-[#ebe7df] active:scale-[0.98]"
           >
             <SignOut size={14} weight="bold" /> <span className="hidden sm:inline">Sign out</span>
           </button>
@@ -94,7 +94,7 @@ export default function TopBar({
       </header>
 
       {!selectedArticleId && (
-        <div className="border-b border-[#EAEAEA] bg-white px-4 py-2 md:hidden dark:border-white/10 dark:bg-[#201F1E]">
+        <div className="border-b border-[#ddd8ce] bg-[#fbfaf7] px-4 py-2 md:hidden">
           <div className="relative">
             <MagnifyingGlass
               size={15}
@@ -106,7 +106,7 @@ export default function TopBar({
               onChange={(e) => setQuery(e.target.value || null)}
               placeholder="Search articles"
               aria-label="Search articles"
-              className="w-full rounded-[6px] border border-[#EAEAEA] bg-[#F7F6F3] py-2 pr-3 pl-9 text-sm dark:border-white/10 dark:bg-white/5"
+              className="w-full rounded-[3px] border border-[#ddd8ce] bg-[#ebe7df] py-2 pr-3 pl-9 text-sm"
             />
           </div>
         </div>

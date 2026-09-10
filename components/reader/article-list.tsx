@@ -161,13 +161,13 @@ export default function ArticleList({ feedId, filter, heading }: Props) {
   };
 
   return (
-    <section className="flex w-full min-w-0 flex-col border-r border-[#EAEAEA] bg-white sm:w-[380px] sm:shrink-0 dark:border-white/10 dark:bg-[#201F1E]">
-      <div className="flex shrink-0 items-baseline justify-between border-b border-[#EAEAEA] px-5 pt-5 pb-3 dark:border-white/10">
+    <section className="paper-grain flex w-full min-w-0 flex-col border-r border-[#ddd8ce] bg-[#fbfaf7] sm:w-[410px] sm:shrink-0">
+      <div className="flex shrink-0 items-baseline justify-between border-b border-[#ddd8ce] px-6 pt-7 pb-5">
         <div>
-          <h2 className="font-editorial text-[22px] leading-none font-medium tracking-tight">
+          <h2 className="font-editorial text-[27px] leading-none tracking-tight">
             {heading}
           </h2>
-          <p className="mt-1.5 font-mono text-[11px] uppercase tracking-[0.1em] text-[#787774]">
+          <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-[#817c73]">
             {loading && articles.length > 0 ? (
               "Updating…"
             ) : (
@@ -180,7 +180,7 @@ export default function ArticleList({ feedId, filter, heading }: Props) {
         </div>
         <button
           onClick={markAllRead}
-          className="inline-flex shrink-0 items-center gap-1 text-xs text-[#787774] underline decoration-[#EAEAEA] underline-offset-4 hover:text-[#111111] dark:hover:text-white"
+          className="inline-flex shrink-0 items-center gap-1 text-xs text-[#817c73] underline decoration-[#c8c1b5] underline-offset-4 hover:text-[#a84f35]"
         >
           <Checks size={13} weight="bold" /> Mark read
         </button>
@@ -204,7 +204,7 @@ export default function ArticleList({ feedId, filter, heading }: Props) {
             <div
               key={a.id}
               style={{ "--index": Math.min(i, 3) } as React.CSSProperties}
-              className={`${fresh ? "reveal" : ""} row-lift border-b border-[#EAEAEA] px-5 py-4 dark:border-white/10 ${selected ? "bg-[#F7F6F3] dark:bg-white/5" : "hover:bg-[#FBFBFA] dark:hover:bg-white/[0.03]"} ${a.isRead ? "opacity-60" : ""}`}
+              className={`${fresh ? "reveal" : ""} row-lift border-b border-[#e5e0d7] px-6 py-5 ${selected ? "bg-[#ebe7df]" : "hover:bg-[#f4f1eb]"} ${a.isRead ? "opacity-55" : ""}`}
             >
               <div className="flex items-start gap-3">
                 {!a.isRead && (
@@ -215,16 +215,16 @@ export default function ArticleList({ feedId, filter, heading }: Props) {
                   aria-current={selected ? true : undefined}
                   className="min-w-0 flex-1 rounded-md text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1F6C9F]"
                 >
-                  <p className="truncate font-mono text-[11px] uppercase tracking-[0.08em] text-[#787774]">
+                  <p className="truncate font-mono text-[10px] uppercase tracking-[0.1em] text-[#817c73]">
                     {a.feedTitle ?? "Feed"} · {timeAgo(a.publishedAt)}
                   </p>
                   <p
-                    className={`mt-1 text-[14px] leading-snug ${a.isRead ? "font-normal" : "font-semibold tracking-[-0.01em]"}`}
+                    className={`mt-1.5 text-[15px] leading-[1.25] ${a.isRead ? "font-normal" : "font-semibold tracking-[-0.015em]"}`}
                   >
                     {a.title}
                   </p>
                   {a.snippet && (
-                    <p className="mt-1 line-clamp-2 text-[13px] leading-relaxed text-[#787774]">{a.snippet}</p>
+                    <p className="mt-2 line-clamp-2 max-w-[34ch] text-[13px] leading-[1.45] text-[#817c73]">{a.snippet}</p>
                   )}
                 </button>
                 <button

@@ -26,7 +26,7 @@ export default function FeedView({
         <ArticleList feedId={feedId} filter={filter} heading={heading} />
       </div>
       <main
-        className={`${articleId ? "flex" : "hidden"} min-w-0 flex-1 flex-col overflow-hidden bg-[#FBFBFA] md:flex dark:bg-[#191918]`}
+        className={`${articleId ? "flex" : "hidden"} paper-grain min-w-0 flex-1 flex-col overflow-hidden md:flex`}
       >
         <ArticleReader articleId={articleId} onBack={() => setArticleId(null)} showBack />
       </main>

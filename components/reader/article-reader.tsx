@@ -182,7 +182,7 @@ export default function ArticleReader({
           <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-xl border border-[#EAEAEA] bg-white dark:border-white/10 dark:bg-[#201F1E]">
             <Newspaper size={24} weight="bold" className="text-[#111111] dark:text-[#ECECEA]" />
           </span>
-          <h2 className="font-editorial mt-5 text-[28px] leading-tight font-medium tracking-tight">
+          <h2 className="font-editorial mt-5 text-[34px] leading-[.95] tracking-tight">
             Pick something
             <br />
             worth reading.
@@ -203,7 +203,7 @@ export default function ArticleReader({
       <div aria-hidden="true" className="reading-progress-track">
         <div className="reading-progress-fill" />
       </div>
-      <div ref={contentRef} className="mx-auto w-full min-w-0 max-w-2xl px-6 py-10 sm:px-10 sm:py-12 xl:max-w-3xl">
+      <div ref={contentRef} className="reading-surface w-full min-w-0 px-6 py-14 sm:px-12 sm:py-20">
         {showBack && onBack && (
           <button
             onClick={onBack}
@@ -227,13 +227,13 @@ export default function ArticleReader({
             />
           </figure>
         )}
-        <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-[#787774]">
+        <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#817c73]">
           {article.feedTitle}
         </p>
-        <h1 className="font-editorial mt-2 text-[32px] leading-[1.12] font-medium tracking-[-0.02em] text-balance sm:text-[38px]">
+        <h1 className="font-editorial mt-3 max-w-5xl text-[clamp(2.5rem,5vw,4.8rem)] leading-[.95] tracking-[-0.045em] text-balance">
           {article.title}
         </h1>
-        <p className="mt-3 font-mono text-xs text-[#787774]">
+        <p className="mt-5 font-mono text-xs text-[#817c73]">
           {article.author ? `${article.author} · ` : ""}
           {article.publishedAt
             ? new Date(article.publishedAt).toLocaleString(undefined, {
@@ -244,20 +244,20 @@ export default function ArticleReader({
               })
             : ""}
         </p>
-        <div className="mt-5 flex flex-wrap items-center gap-2 border-y border-[#EAEAEA] py-3 dark:border-white/10">
+        <div className="mt-8 flex flex-wrap items-center gap-2 border-y border-[#ddd8ce] py-4">
           {article.link && (
             <a
               href={article.link}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-[6px] bg-[#111111] px-3 py-1.5 text-[13px] font-medium text-white transition hover:bg-[#333333] active:scale-[0.98] dark:bg-[#ECECEA] dark:text-[#191918]"
+              className="inline-flex items-center gap-1.5 rounded-[3px] bg-[#1c1b19] px-3.5 py-2 text-[13px] font-medium text-[#fbfaf7] transition hover:bg-[#a84f35] active:scale-[0.98]"
             >
               Open original <ArrowSquareOut size={13} weight="bold" />
             </a>
           )}
           <button
             onClick={toggleStar}
-            className="inline-flex items-center gap-1.5 rounded-[6px] border border-[#EAEAEA] bg-white px-3 py-1.5 text-[13px] transition hover:bg-[#F7F6F3] active:scale-[0.98] dark:border-white/10 dark:bg-transparent dark:hover:bg-white/5"
+              className="inline-flex items-center gap-1.5 rounded-[3px] border border-[#c8c1b5] bg-[#fbfaf7] px-3.5 py-2 text-[13px] transition hover:bg-[#ebe7df] active:scale-[0.98]"
           >
             <Star
               size={13}
