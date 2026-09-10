@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { useEffect, useRef } from "react";
-import { buildMuxPlayer, configureEmbedIframe, getVideoEmbed, sanitizeIframe, sanitizeMuxPlayers } from "@/lib/article-embeds";
+import { buildMuxPlayer, configureEmbedIframe, getDirectMediaEmbed, getVideoEmbed, sanitizeIframe, sanitizeMuxPlayers } from "@/lib/article-embeds";
 import { useMuxOverrideAll } from "@/lib/playback-prefs";
 
 const SHIKI_LANGUAGES = [
@@ -218,6 +218,15 @@ function enhanceArticleHtml(html: string, baseUrl?: string, muxOverrideAll = fal
   document.querySelectorAll<HTMLIFrameElement>("iframe[src]").forEach((frame) => {
     sanitizeIframe(frame, document, baseUrl, { muxOverrideAll });
   });
+
+  // Ingest stores direct media neutrally as native <video>; upgrade to
+  // <mux-player> at view time when the override preference is on.
+  if (muxOverrideAll) {
+    document.querySelectorAll<HTMLVideoElement>("video[data-direct-media][src]").forEach((video) => {
+      const embed = getDirectMediaEmbed(video.getAttribute("src") ?? "", baseUrl);
+      if (embed) video.replaceWith(buildMuxPlayer(document, embed, video.getAttribute("aria-label")));
+    });
+  }
 
   // Repair stored <mux-player> elements written before the src/playback-id
   // split fix and backfill the light-DOM fallback link.

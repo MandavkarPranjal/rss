@@ -30,8 +30,9 @@ export type EmbedOptions = {
 
 /**
  * Direct media file (.m3u8, .mp4, …) playable through Mux Player via `src`.
- * Exported so callers can preserve such iframes even when the override toggle
- * is off (instead of dropping them as unknown embeds).
+ * Exported so callers can preserve such media even when the override toggle
+ * is off (as safe native <video> instead of dropping them as unknown
+ * embeds).
  */
 export function getDirectMediaEmbed(urlValue: string, baseUrl?: string): Extract<VideoEmbed, { kind: "mux" }> | undefined {
   const url = resolveUrl(urlValue, baseUrl);
@@ -163,6 +164,34 @@ export function configureEmbedIframe(
   frame.setAttribute("loading", "lazy");
   frame.setAttribute("allow", EMBED_IFRAME_ALLOW);
   frame.setAttribute("allowfullscreen", "true");
+}
+
+/**
+ * Safe native playback for a direct media file. A <video> element loads the
+ * URL as media (never as an executable document), so arbitrary hosts stay
+ * safe without framing anything. Carries `data-direct-media` so the reader
+ * can upgrade it to <mux-player> when the override preference is on.
+ */
+export function buildNativeVideo(
+  document: Document,
+  embed: Extract<VideoEmbed, { kind: "mux" }>,
+  title?: string | null,
+): HTMLVideoElement {
+  const video = document.createElement("video");
+  video.setAttribute("controls", "");
+  video.setAttribute("preload", "metadata");
+  video.setAttribute("playsinline", "");
+  if (embed.src) video.setAttribute("src", embed.src);
+  video.setAttribute("data-direct-media", "true");
+  const label = title?.trim() || embed.title;
+  video.setAttribute("aria-label", label);
+  const fallback = document.createElement("a");
+  fallback.setAttribute("href", embed.src ?? "");
+  fallback.setAttribute("target", "_blank");
+  fallback.setAttribute("rel", "noreferrer");
+  fallback.textContent = "Open video";
+  video.append(fallback);
+  return video;
 }
 
 /** Link-out card for embeds browsers refuse to frame. */
@@ -355,13 +384,17 @@ export function sanitizeIframe(
   // Direct media files are NOT safe to keep as raw iframes: the media
   // extension comes only from the URL path string, so a malicious feed can
   // point `.../tracker.mp4` at a server that responds with HTML, which would
-  // then run in a framed context. Play them through <mux-player> instead —
-  // a <video> element loads the URL as media (never as an executable
-  // document), so arbitrary hosts stay safe without framing anything.
+  // then run in a framed context. Never frame them — play through
+  // <mux-player> when the override preference is on, else a native <video>
+  // element (loads the URL as media, never as an executable document).
   const absoluteSrc = getAbsoluteHttpUrl(src, baseUrl);
   const direct = absoluteSrc ? getDirectMediaEmbed(absoluteSrc) : undefined;
   if (direct) {
-    frame.replaceWith(buildMuxPlayer(document, direct, frame.getAttribute("title")));
+    if (options?.muxOverrideAll) {
+      frame.replaceWith(buildMuxPlayer(document, direct, frame.getAttribute("title")));
+    } else {
+      frame.replaceWith(buildNativeVideo(document, direct, frame.getAttribute("title")));
+    }
     return;
   }
 

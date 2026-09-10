@@ -388,6 +388,16 @@ body {
   background: var(--bone);
   overflow: hidden;
 }
+.reader-body video[data-direct-media] {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: 160px;
+  margin: 1.75em 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bone);
+}
 /* Light-DOM fallback shown while <mux-player> is un-upgraded (JS disabled /
    player chunk failed). Hidden once the player upgrades to shadow DOM. */
 .reader-body .mux-player-fallback {
