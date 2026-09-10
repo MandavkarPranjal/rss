@@ -45,7 +45,7 @@ export default function SettingsModal({ open, onClose }: Props) {
         <div className="flex shrink-0 items-center justify-between border-b border-[#EAEAEA] px-4 py-3 sm:px-5 sm:py-4 dark:border-white/10">
           <div>
             <h2 className="font-editorial text-[19px] font-medium tracking-tight sm:text-[20px]">Settings</h2>
-            <p className="text-[12px] text-[#787774] sm:text-[13px]">Manage your sign-in and account.</p>
+            <p className="text-[12px] text-[#787774] sm:text-[13px]">Manage your account, sign-in, and playback.</p>
           </div>
           <button
             onClick={handleClose}

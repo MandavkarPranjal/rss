@@ -15,6 +15,34 @@ function isValidMuxPlaybackId(value: string | null): value is string {
   return Boolean(value && /^[a-zA-Z0-9_-]{8,}$/u.test(value));
 }
 
+/** Direct media files Mux Player can play natively (HLS or progressive). */
+const PLAYABLE_MEDIA_EXTENSIONS = ["m3u8", "mp4", "m4v", "webm", "ogv", "ogg"];
+
+export type EmbedOptions = {
+  /**
+   * When true, direct media file URLs (.m3u8, .mp4, …) also resolve to
+   * <mux-player> embeds for a consistent player experience. Provider embeds
+   * (YouTube, Vimeo, …) always keep their native players — Mux Player cannot
+   * play their embed pages. JW/Mux URLs always resolve to Mux Player.
+   */
+  muxOverrideAll?: boolean;
+};
+
+/**
+ * Direct media file (.m3u8, .mp4, …) playable through Mux Player via `src`.
+ * Exported so callers can preserve such iframes even when the override toggle
+ * is off (instead of dropping them as unknown embeds).
+ */
+export function getDirectMediaEmbed(urlValue: string, baseUrl?: string): Extract<VideoEmbed, { kind: "mux" }> | undefined {
+  const url = resolveUrl(urlValue, baseUrl);
+  if (!url) return undefined;
+  if (url.protocol !== "http:" && url.protocol !== "https:") return undefined;
+  const ext = url.pathname.split("/").pop()?.split(".").pop()?.toLowerCase();
+  if (!ext || !PLAYABLE_MEDIA_EXTENSIONS.includes(ext)) return undefined;
+  const fallback = decodeURIComponent(url.pathname.split("/").pop() || "").slice(0, 80) || "Video";
+  return { kind: "mux", src: url.href, title: fallback };
+}
+
 /**
  * JW-hosted video, played through Mux Player instead of the JW iframe.
  * The same media ID addresses JW's public HLS manifest, which
@@ -110,7 +138,7 @@ function youtubeEmbed(url: URL): string | undefined {
     : undefined;
 }
 
-export function getVideoEmbed(urlValue: string): VideoEmbed | undefined {
+export function getVideoEmbed(urlValue: string, options?: EmbedOptions): VideoEmbed | undefined {
   let url: URL;
   try {
     url = new URL(urlValue.trim());
@@ -162,6 +190,11 @@ export function getVideoEmbed(urlValue: string): VideoEmbed | undefined {
     if (manifestMatch && isValidJwId(manifestMatch[1])) return jwPlayerEmbed(manifestMatch[1]);
   }
 
+  if (options?.muxOverrideAll) {
+    const direct = getDirectMediaEmbed(url.href);
+    if (direct) return direct;
+  }
+
   return undefined;
 }
 
@@ -173,6 +206,14 @@ function resolveUrl(value: string, baseUrl?: string): URL | undefined {
   } catch {
     return undefined;
   }
+}
+
+/** Resolve to an absolute http(s) URL, or undefined for anything else. */
+function getAbsoluteHttpUrl(value: string, baseUrl?: string): string | undefined {
+  const resolved = resolveUrl(value, baseUrl);
+  if (!resolved) return undefined;
+  if (resolved.protocol !== "http:" && resolved.protocol !== "https:") return undefined;
+  return resolved.href;
 }
 
 function isSameOrigin(url: URL, baseUrl: string): boolean {
@@ -212,12 +253,12 @@ export function getSameOriginIframeUrl(srcValue: string, baseUrl?: string): stri
  * Cross-origin iframes from unknown hosts are dropped to avoid
  * clickjacking / tracking.
  */
-export function getSafeIframeSrc(srcValue: string, baseUrl?: string): VideoEmbed | undefined {
+export function getSafeIframeSrc(srcValue: string, baseUrl?: string, options?: EmbedOptions): VideoEmbed | undefined {
   const resolved = resolveUrl(srcValue, baseUrl);
   if (!resolved) return undefined;
   if (resolved.protocol !== "http:" && resolved.protocol !== "https:") return undefined;
 
-  const video = getVideoEmbed(resolved.href);
+  const video = getVideoEmbed(resolved.href, options);
   if (video) return video;
 
   return undefined;
@@ -228,9 +269,10 @@ export function sanitizeIframe(
   frame: HTMLIFrameElement,
   document: Document,
   baseUrl?: string,
+  options?: EmbedOptions,
 ): void {
   const src = frame.getAttribute("src") ?? "";
-  const embed = getSafeIframeSrc(src, baseUrl);
+  const embed = getSafeIframeSrc(src, baseUrl, options);
   if (embed) {
     // Mux-played videos (Mux-hosted or JW manifests) render as <mux-player>
     // instead of an <iframe> — e.g. stale JW player iframes stored before the
@@ -240,6 +282,20 @@ export function sanitizeIframe(
       return;
     }
     configureEmbedIframe(frame, embed, frame.getAttribute("title"));
+    return;
+  }
+
+  // Direct media files are safe to frame (no interactive page inside), so
+  // preserve them as plain iframes. The reader upgrades them to <mux-player>
+  // client-side when the override toggle is on.
+  const absoluteSrc = getAbsoluteHttpUrl(src, baseUrl);
+  const direct = absoluteSrc ? getDirectMediaEmbed(absoluteSrc) : undefined;
+  if (direct && absoluteSrc) {
+    configureEmbedIframe(
+      frame,
+      { kind: "iframe", src: absoluteSrc, title: frame.getAttribute("title")?.trim() || direct.title },
+      frame.getAttribute("title"),
+    );
     return;
   }
 

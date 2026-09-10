@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { useEffect, useRef } from "react";
 import { buildMuxPlayer, configureEmbedIframe, getVideoEmbed, sanitizeIframe } from "@/lib/article-embeds";
+import { useMuxOverrideAll } from "@/lib/playback-prefs";
 
 const SHIKI_LANGUAGES = [
   "bash",
@@ -152,7 +153,7 @@ async function highlightCodeBlocks(root: HTMLDivElement, isCancelled: () => bool
   });
 }
 
-function enhanceArticleHtml(html: string, baseUrl?: string) {
+function enhanceArticleHtml(html: string, baseUrl?: string, muxOverrideAll = false) {
   if (typeof DOMParser === "undefined") return html;
   const document = new DOMParser().parseFromString(html, "text/html");
 
@@ -199,7 +200,7 @@ function enhanceArticleHtml(html: string, baseUrl?: string) {
 
   document.querySelectorAll("a[href]").forEach((anchor) => {
     const href = anchor.getAttribute("href") ?? "";
-    const embed = getVideoEmbed(href);
+    const embed = getVideoEmbed(href, { muxOverrideAll });
     const parent = anchor.parentElement;
     if (!embed || !parent || parent.children.length !== 1 || parent.textContent?.trim() !== href) return;
 
@@ -213,14 +214,18 @@ function enhanceArticleHtml(html: string, baseUrl?: string) {
   });
 
   document.querySelectorAll<HTMLIFrameElement>("iframe[src]").forEach((frame) => {
-    sanitizeIframe(frame, document, baseUrl);
+    sanitizeIframe(frame, document, baseUrl, { muxOverrideAll });
   });
 
   return document.body.innerHTML;
 }
 
 export default function ArticleContent({ html, baseUrl }: { html: string; baseUrl?: string }) {
-  const enhancedHtml = useMemo(() => enhanceArticleHtml(html, baseUrl), [html, baseUrl]);
+  const muxOverrideAll = useMuxOverrideAll();
+  const enhancedHtml = useMemo(
+    () => enhanceArticleHtml(html, baseUrl, muxOverrideAll),
+    [html, baseUrl, muxOverrideAll],
+  );
   const contentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
