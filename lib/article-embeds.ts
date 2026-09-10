@@ -58,13 +58,26 @@ function jwPlayerEmbed(mediaId: string): VideoEmbed {
 
 /** Mux-hosted video, played through Mux Player via its playback ID. */
 function muxPlayerEmbed(playbackId: string, playbackToken?: string): VideoEmbed {
+  // Note: no `src` — Mux Player derives the stream URL (including signed
+  // `?token=` params) from `playback-id` + `playback-token`. Setting both
+  // `playback-id` and `src` is redundant and risks the raw `src` winning over
+  // the signed derived URL.
   return {
     kind: "mux",
     playbackId,
-    src: `https://stream.mux.com/${encodeURIComponent(playbackId)}.m3u8`,
     playbackToken,
     title: "Mux video",
   };
+}
+
+/**
+ * User-facing watch URL for a mux-kind embed. Used as progressive-enhancement
+ * fallback content inside <mux-player> so the video stays reachable when the
+ * custom element is not upgraded (JS disabled / chunk load failure).
+ */
+export function getMuxFallbackUrl(embed: Extract<VideoEmbed, { kind: "mux" }>): string | undefined {
+  if (embed.playbackId) return `https://player.mux.com/${encodeURIComponent(embed.playbackId)}`;
+  return embed.src;
 }
 
 /** Build a <mux-player> element for a mux-kind embed. */
@@ -75,13 +88,58 @@ export function buildMuxPlayer(
 ): Element {
   const player = document.createElement("mux-player");
   player.setAttribute("stream-type", "on-demand");
-  if (embed.playbackId) player.setAttribute("playback-id", embed.playbackId);
-  if (embed.playbackToken) player.setAttribute("playback-token", embed.playbackToken);
-  if (embed.src) player.setAttribute("src", embed.src);
+  if (embed.playbackId) {
+    player.setAttribute("playback-id", embed.playbackId);
+    if (embed.playbackToken) player.setAttribute("playback-token", embed.playbackToken);
+    // Intentionally no `src`: `playback-id` (+ `playback-token`) is the
+    // documented signed-playback pattern; `src` is only for raw manifests
+    // (the JW / direct-file case, which has no playback id).
+  } else {
+    if (embed.playbackToken) player.setAttribute("playback-token", embed.playbackToken);
+    if (embed.src) player.setAttribute("src", embed.src);
+  }
   const label = title?.trim() || embed.title;
   player.setAttribute("title", label);
   player.setAttribute("metadata-video-title", label);
+  // Light-DOM fallback: visible while the custom element is un-upgraded,
+  // hidden once Mux Player upgrades and attaches its shadow DOM.
+  const fallbackUrl = getMuxFallbackUrl(embed);
+  if (fallbackUrl) {
+    const fallback = document.createElement("a");
+    fallback.setAttribute("href", fallbackUrl);
+    fallback.setAttribute("target", "_blank");
+    fallback.setAttribute("rel", "noreferrer");
+    fallback.setAttribute("class", "mux-player-fallback");
+    fallback.textContent = "Open video";
+    player.append(fallback);
+  }
   return player;
+}
+
+/**
+ * Repair previously stored <mux-player> elements: drop the redundant `src`
+ * when `playback-id` is present and backfill the light-DOM fallback link.
+ * Stored rows written before the fix keep rendering with both attributes
+ * otherwise, since ingest only rebuilds anchors/iframes.
+ */
+export function sanitizeMuxPlayers(document: Document): void {
+  document.querySelectorAll("mux-player").forEach((player) => {
+    const playbackId = player.getAttribute("playback-id");
+    if (playbackId) player.removeAttribute("src");
+    if (player.querySelector("a[href]")) return;
+    const src = player.getAttribute("src");
+    const fallbackUrl = playbackId
+      ? `https://player.mux.com/${encodeURIComponent(playbackId)}`
+      : src;
+    if (!fallbackUrl) return;
+    const fallback = document.createElement("a");
+    fallback.setAttribute("href", fallbackUrl);
+    fallback.setAttribute("target", "_blank");
+    fallback.setAttribute("rel", "noreferrer");
+    fallback.setAttribute("class", "mux-player-fallback");
+    fallback.textContent = "Open video";
+    player.append(fallback);
+  });
 }
 
 /** Apply the shared iframe policy to a known-safe video embed. */

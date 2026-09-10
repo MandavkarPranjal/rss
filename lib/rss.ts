@@ -1,7 +1,7 @@
 import { Readability } from "@mozilla/readability";
 import { JSDOM } from "jsdom";
 import Parser from "rss-parser";
-import { buildMuxPlayer, configureEmbedIframe, getVideoEmbed, sanitizeIframe } from "./article-embeds";
+import { buildMuxPlayer, configureEmbedIframe, getVideoEmbed, sanitizeIframe, sanitizeMuxPlayers } from "./article-embeds";
 import { decodeEntities, decodeHtmlTextNodes } from "./decode-entities";
 import { fetchPublicText } from "./safe-fetch";
 
@@ -139,6 +139,7 @@ function sanitizeArticleHtml(html: string, baseUrl: string): string {  // Feeds 
     configureEmbedIframe(iframe, embed);
     parent.replaceWith(iframe);
   }
+  sanitizeMuxPlayers(document);
   return makeAbsoluteUrls(document.body.innerHTML, baseUrl).trim();
 }
 
