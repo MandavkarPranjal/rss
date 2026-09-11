@@ -137,6 +137,9 @@ function addCopyControls(root: HTMLDivElement) {
 
 function syncTableRegions(root: HTMLDivElement) {
   const wrappers = Array.from(root.querySelectorAll<HTMLDivElement>(".reader-table-wrap"));
+  const tables = wrappers
+    .map((wrapper) => wrapper.querySelector<HTMLTableElement>("table"))
+    .filter((table): table is HTMLTableElement => table !== null);
   let frame = 0;
 
   const update = () => {
@@ -163,6 +166,9 @@ function syncTableRegions(root: HTMLDivElement) {
   const resizeObserver = new ResizeObserver(scheduleUpdate);
   resizeObserver.observe(root);
   wrappers.forEach((wrapper) => resizeObserver.observe(wrapper));
+  // The wrapper's border box can stay fixed while a table's intrinsic width
+  // grows, so observe the table itself to refresh the overflow attributes.
+  tables.forEach((table) => resizeObserver.observe(table));
   window.addEventListener("resize", scheduleUpdate);
 
   return () => {
