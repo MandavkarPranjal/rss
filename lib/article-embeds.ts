@@ -431,19 +431,33 @@ export function extractJsonLdVideoEmbeds(document: Document, options?: EmbedOpti
     for (const node of nodes) {
       if (!node || typeof node !== "object") continue;
       const record = node as Record<string, unknown>;
-      const types = Array.isArray(record["@type"]) ? record["@type"] : [record["@type"]];
-      const nested = record["@graph"];
-      if (nested) collect(nested, title);
-      // Some publishers nest the object under mainEntity.
-      if (record["mainEntity"]) collect(record["mainEntity"], title);
-      if (!types.includes("VideoObject")) continue;
+      // Derive the current name before recursing so a nested VideoObject
+      // inherits the closest ancestor name instead of the generic title.
       const name = typeof record["name"] === "string" ? record["name"] : title;
+      const rawTypes = Array.isArray(record["@type"]) ? record["@type"] : [record["@type"]];
+      // Accept the absolute Schema.org type IRI as well as the compact form.
+      const types = rawTypes.map((type) =>
+        typeof type === "string" ? type.replace(/^https?:\/\/schema\.org\//u, "") : type,
+      );
+      const nested = record["@graph"];
+      if (nested) collect(nested, name);
+      // Some publishers nest the object under mainEntity.
+      if (record["mainEntity"]) collect(record["mainEntity"], name);
+      if (!types.includes("VideoObject")) continue;
       for (const key of ["contentUrl", "embedUrl", "embedURL", "contentURL"]) {
         const raw = record[key];
         const urls = Array.isArray(raw) ? raw : [raw];
         for (const candidate of urls) {
-          if (typeof candidate !== "string") continue;
-          const embed = getVideoEmbed(candidate, options);
+          if (typeof candidate !== "string" || !candidate.trim()) continue;
+          // Publishers may emit relative or protocol-relative URLs — resolve
+          // against the page before provider validation.
+          let absolute: string;
+          try {
+            absolute = new URL(candidate.trim(), document.baseURI).href;
+          } catch {
+            continue;
+          }
+          const embed = getVideoEmbed(absolute, options);
           if (!embed || embed.kind !== "iframe" || seen.has(embed.src)) continue;
           seen.add(embed.src);
           embeds.push(name ? { ...embed, title: name.slice(0, 120) } : embed);
