@@ -135,6 +135,43 @@ function addCopyControls(root: HTMLDivElement) {
   }).filter((cleanup): cleanup is () => void => Boolean(cleanup));
 }
 
+function syncTableRegions(root: HTMLDivElement) {
+  const wrappers = Array.from(root.querySelectorAll<HTMLDivElement>(".reader-table-wrap"));
+  let frame = 0;
+
+  const update = () => {
+    frame = 0;
+    wrappers.forEach((wrapper, index) => {
+      const isScrollable = wrapper.scrollWidth > wrapper.clientWidth + 1;
+      if (isScrollable) {
+        const caption = wrapper.querySelector("caption")?.textContent?.trim();
+        wrapper.setAttribute("role", "region");
+        wrapper.setAttribute("tabindex", "0");
+        wrapper.setAttribute("aria-label", caption || `Scrollable table ${index + 1}`);
+      } else {
+        wrapper.removeAttribute("role");
+        wrapper.removeAttribute("tabindex");
+        wrapper.removeAttribute("aria-label");
+      }
+    });
+  };
+  const scheduleUpdate = () => {
+    if (!frame) frame = window.requestAnimationFrame(update);
+  };
+
+  update();
+  const resizeObserver = new ResizeObserver(scheduleUpdate);
+  resizeObserver.observe(root);
+  wrappers.forEach((wrapper) => resizeObserver.observe(wrapper));
+  window.addEventListener("resize", scheduleUpdate);
+
+  return () => {
+    window.removeEventListener("resize", scheduleUpdate);
+    resizeObserver.disconnect();
+    if (frame) window.cancelAnimationFrame(frame);
+  };
+}
+
 async function highlightCodeBlocks(root: HTMLDivElement, isCancelled: () => boolean) {
   const highlighter = await getHighlighter();
   if (isCancelled()) return;
@@ -226,9 +263,6 @@ function enhanceArticleHtml(html: string, baseUrl?: string, muxOverrideAll = fal
     if (table.parentElement?.classList.contains("reader-table-wrap")) return;
     const wrapper = document.createElement("div");
     wrapper.className = "reader-table-wrap";
-    wrapper.setAttribute("role", "region");
-    wrapper.setAttribute("tabindex", "0");
-    wrapper.setAttribute("aria-label", "Scrollable table");
     table.replaceWith(wrapper);
     wrapper.append(table);
   });
@@ -261,6 +295,7 @@ export default function ArticleContent({ html, baseUrl }: { html: string; baseUr
     const root = contentRef.current;
     if (!root) return;
     if (root.querySelector("mux-player")) void ensureMuxPlayer();
+    const tableCleanup = syncTableRegions(root);
     const cleanups = addCopyControls(root);
     let cancelled = false;
     highlightCodeBlocks(root, () => cancelled).catch(() => {
@@ -268,6 +303,7 @@ export default function ArticleContent({ html, baseUrl }: { html: string; baseUr
     });
     return () => {
       cancelled = true;
+      tableCleanup();
       cleanups.forEach((cleanup) => cleanup());
     };
   }, [enhancedHtml]);
