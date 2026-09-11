@@ -268,6 +268,15 @@ export function getVideoEmbed(urlValue: string, options?: EmbedOptions): VideoEm
     if (id) return { kind: "iframe", src: `https://player.twitch.tv/?video=${id}&parent=${encodeURIComponent(typeof window === "undefined" ? "localhost" : window.location.hostname)}`, title: "Twitch video" };
   }
 
+  if (isAllowedHost(url.hostname, ["volume.vox-cdn.com"])) {
+    // Vox Media's Volume player (The Verge, etc.): /embed/{uuid}. The page
+    // frames fine (no X-Frame-Options) and wraps YouTube/Brightcove/etc.
+    // under the hood, so keep the native player with a canonical URL
+    // (tracking query params stripped).
+    const id = url.pathname.match(/^\/embed\/([a-zA-Z0-9_-]{6,})/u)?.[1];
+    if (id) return { kind: "iframe", src: `https://volume.vox-cdn.com/embed/${encodeURIComponent(id)}`, title: "Video" };
+  }
+
   if (isAllowedHost(url.hostname, MUX_PLAYER_HOSTS)) {
     // player.mux.com/{playbackId} and stream.mux.com/{playbackId}[.m3u8]
     const playbackId = url.pathname.split("/").filter(Boolean)[0]?.replace(/\.m3u8$/u, "");
@@ -405,4 +414,49 @@ export function sanitizeIframe(
   }
 
   frame.remove();
+}
+
+/**
+ * Extract video embeds declared in JSON-LD (`VideoObject.contentUrl` /
+ * `embedUrl`). Sites like The Verge render their player client-side (Vox
+ * Volume), so Readability output contains no iframe — the structured metadata
+ * is the only trace of the video. Only URLs resolving to a known-safe provider
+ * (via getVideoEmbed) are returned.
+ */
+export function extractJsonLdVideoEmbeds(document: Document, options?: EmbedOptions): VideoEmbed[] {
+  const embeds: VideoEmbed[] = [];
+  const seen = new Set<string>();
+  const collect = (value: unknown, title?: string) => {
+    const nodes = Array.isArray(value) ? value : [value];
+    for (const node of nodes) {
+      if (!node || typeof node !== "object") continue;
+      const record = node as Record<string, unknown>;
+      const types = Array.isArray(record["@type"]) ? record["@type"] : [record["@type"]];
+      const nested = record["@graph"];
+      if (nested) collect(nested, title);
+      // Some publishers nest the object under mainEntity.
+      if (record["mainEntity"]) collect(record["mainEntity"], title);
+      if (!types.includes("VideoObject")) continue;
+      const name = typeof record["name"] === "string" ? record["name"] : title;
+      for (const key of ["contentUrl", "embedUrl", "embedURL", "contentURL"]) {
+        const raw = record[key];
+        const urls = Array.isArray(raw) ? raw : [raw];
+        for (const candidate of urls) {
+          if (typeof candidate !== "string") continue;
+          const embed = getVideoEmbed(candidate, options);
+          if (!embed || embed.kind !== "iframe" || seen.has(embed.src)) continue;
+          seen.add(embed.src);
+          embeds.push(name ? { ...embed, title: name.slice(0, 120) } : embed);
+        }
+      }
+    }
+  };
+  document.querySelectorAll('script[type="application/ld+json"]').forEach((script) => {
+    try {
+      collect(JSON.parse(script.textContent ?? ""));
+    } catch {
+      // Malformed JSON-LD is common; ignore it.
+    }
+  });
+  return embeds;
 }
