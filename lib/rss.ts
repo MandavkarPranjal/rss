@@ -1,7 +1,8 @@
 import { Readability } from "@mozilla/readability";
 import { JSDOM } from "jsdom";
 import Parser from "rss-parser";
-import { buildMuxPlayer, configureEmbedIframe, getVideoEmbed, sanitizeIframe, sanitizeMuxPlayers } from "./article-embeds";
+import { buildMuxPlayer, configureEmbedIframe, extractJsonLdVideoEmbeds, getVideoEmbed, sanitizeIframe, sanitizeMuxPlayers } from "./article-embeds";
+import type { VideoEmbed } from "./article-embeds";
 import { decodeEntities, decodeHtmlTextNodes } from "./decode-entities";
 import { fetchPublicText } from "./safe-fetch";
 
@@ -92,7 +93,7 @@ function makeAbsoluteUrls(html: string, baseUrl: string): string {
   return document.body.innerHTML;
 }
 
-function sanitizeArticleHtml(html: string, baseUrl: string): string {  // Feeds frequently double-encode body text (`&amp;#8217;`), which a
+export function sanitizeArticleHtml(html: string, baseUrl: string): string {  // Feeds frequently double-encode body text (`&amp;#8217;`), which a
   // DOM round-trip preserves verbatim — decode text nodes first so new rows
   // store (and render) the intended characters. Markup is untouched.
   html = decodeHtmlTextNodes(html);
@@ -515,6 +516,29 @@ function extractMetadataImage(document: Document, baseUrl: string): string | und
   return undefined;
 }
 
+/**
+ * Re-insert JSON-LD video embeds missing from the sanitized article (their
+ * players render client-side, so Readability never sees an iframe). Placed
+ * after the first paragraph to approximate the original mid-article position.
+ */
+export function injectMissingEmbeds(content: string, embeds: VideoEmbed[], baseUrl: string): string {
+  const missing = embeds.filter(
+    (embed): embed is Extract<VideoEmbed, { kind: "iframe" }> =>
+      embed.kind === "iframe" && !content.includes(embed.src),
+  );
+  if (missing.length === 0) return content;
+  const dom = new JSDOM(`<body>${content}</body>`, { url: baseUrl });
+  const document = dom.window.document;
+  const anchor = document.querySelector("p");
+  for (const embed of missing) {
+    const frame = document.createElement("iframe");
+    configureEmbedIframe(frame, embed);
+    if (anchor?.parentNode) anchor.parentNode.insertBefore(frame, anchor.nextSibling);
+    else document.body.prepend(frame);
+  }
+  return document.body.innerHTML;
+}
+
 async function fetchFullArticle(link: string): Promise<FetchedArticle | undefined> {
   let url: URL;
   try {
@@ -539,13 +563,21 @@ async function fetchFullArticle(link: string): Promise<FetchedArticle | undefine
     const dom = new JSDOM(html, { url: finalUrl });
     const sourceCodeBlocks = extractSourceCodeBlocks(dom.window.document);
     const imageUrl = extractMetadataImage(dom.window.document, finalUrl);
+    // JS-rendered players (e.g. The Verge's Vox Volume embeds) leave no
+    // iframe in the static HTML — only JSON-LD metadata. Capture those before
+    // Readability strips scripts.
+    const jsonLdEmbeds = extractJsonLdVideoEmbeds(dom.window.document);
     const result = new Readability(dom.window.document).parse();
     if (!result?.content || (result.textContent ?? "").trim().length < 200) {
       return imageUrl ? { imageUrl } : undefined;
     }
 
     const contentWithCode = restoreMissingCodeBlocks(result.content, sourceCodeBlocks, finalUrl);
-    const content = sanitizeArticleHtml(contentWithCode, finalUrl);
+    const content = injectMissingEmbeds(
+      sanitizeArticleHtml(contentWithCode, finalUrl),
+      jsonLdEmbeds,
+      finalUrl,
+    );
     return content || imageUrl ? { content: content || undefined, imageUrl } : undefined;
   } catch {
     // Full-text retrieval is best-effort. The RSS item remains usable.
