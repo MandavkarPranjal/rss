@@ -522,6 +522,12 @@ function extractMetadataImage(document: Document, baseUrl: string): string | und
  * after the first paragraph to approximate the original mid-article position.
  */
 export function injectMissingEmbeds(content: string, embeds: VideoEmbed[], baseUrl: string): string {
+  // Filter before parsing: most articles carry no JSON-LD video, and this
+  // helper runs for every full-article fetch.
+  const candidates = embeds.filter(
+    (embed): embed is Extract<VideoEmbed, { kind: "iframe" }> => embed.kind === "iframe",
+  );
+  if (candidates.length === 0) return content;
   const dom = new JSDOM(`<body>${content}</body>`, { url: baseUrl });
   const document = dom.window.document;
   // Deduplicate against actual player iframes: the URL may legitimately
@@ -531,10 +537,7 @@ export function injectMissingEmbeds(content: string, embeds: VideoEmbed[], baseU
       (frame) => frame.getAttribute("src") ?? "",
     ),
   );
-  const missing = embeds.filter(
-    (embed): embed is Extract<VideoEmbed, { kind: "iframe" }> =>
-      embed.kind === "iframe" && !present.has(embed.src),
-  );
+  const missing = candidates.filter((embed) => !present.has(embed.src));
   if (missing.length === 0) return content;
   const anchor = document.querySelector("p");
   const parent = anchor?.parentNode;
