@@ -522,19 +522,39 @@ function extractMetadataImage(document: Document, baseUrl: string): string | und
  * after the first paragraph to approximate the original mid-article position.
  */
 export function injectMissingEmbeds(content: string, embeds: VideoEmbed[], baseUrl: string): string {
-  const missing = embeds.filter(
-    (embed): embed is Extract<VideoEmbed, { kind: "iframe" }> =>
-      embed.kind === "iframe" && !content.includes(embed.src),
-  );
-  if (missing.length === 0) return content;
   const dom = new JSDOM(`<body>${content}</body>`, { url: baseUrl });
   const document = dom.window.document;
+  // Deduplicate against actual player iframes: the URL may legitimately
+  // appear in article text/links while no player is present.
+  const present = new Set(
+    Array.from(document.querySelectorAll("iframe[src]")).map(
+      (frame) => frame.getAttribute("src") ?? "",
+    ),
+  );
+  const missing = embeds.filter(
+    (embed): embed is Extract<VideoEmbed, { kind: "iframe" }> =>
+      embed.kind === "iframe" && !present.has(embed.src),
+  );
+  if (missing.length === 0) return content;
   const anchor = document.querySelector("p");
-  for (const embed of missing) {
-    const frame = document.createElement("iframe");
-    configureEmbedIframe(frame, embed);
-    if (anchor?.parentNode) anchor.parentNode.insertBefore(frame, anchor.nextSibling);
-    else document.body.prepend(frame);
+  const parent = anchor?.parentNode;
+  if (anchor && parent) {
+    // Advance the insertion point so multiple videos retain metadata order.
+    let prev: Node = anchor;
+    for (const embed of missing) {
+      const frame = document.createElement("iframe");
+      configureEmbedIframe(frame, embed);
+      parent.insertBefore(frame, prev.nextSibling);
+      prev = frame;
+    }
+  } else {
+    const fragment = document.createDocumentFragment();
+    for (const embed of missing) {
+      const frame = document.createElement("iframe");
+      configureEmbedIframe(frame, embed);
+      fragment.append(frame);
+    }
+    document.body.prepend(fragment);
   }
   return document.body.innerHTML;
 }
