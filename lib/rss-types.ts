@@ -5,6 +5,13 @@ export type Feed = {
   url: string;
   title: string;
   siteUrl?: string | null;
+  folderId?: string | null;
+  unreadCount: number;
+};
+
+export type Folder = {
+  id: string;
+  name: string;
   unreadCount: number;
 };
 

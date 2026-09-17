@@ -4,10 +4,10 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { parseAsStringEnum, useQueryState } from "nuqs";
-import { Checks, Plus, Trash } from "@phosphor-icons/react";
+import { CaretRight, Checks, Folder, FolderPlus, Plus, Trash } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import { api } from "@/lib/rss-client";
-import type { RssFilter } from "@/lib/rss-types";
+import type { Feed, RssFilter } from "@/lib/rss-types";
 import { useRssStore } from "./rss-store";
 import { useSearchQuery, useSelectedArticleId } from "./use-articles";
 
@@ -22,21 +22,30 @@ export default function FeedSidebar({ onNavigate }: { onNavigate?: () => void })
   const router = useRouter();
   const {
     feeds,
+    folders,
     totalUnread,
     loadFeeds,
     invalidateArticlesCache,
     revalidateCurrent,
     setFeeds,
+    setFolders,
     setFeedsError,
   } = useRssStore();
   const [query] = useSearchQuery();
   const [, setArticleId] = useSelectedArticleId();
   const [newUrl, setNewUrl] = useState("");
   const [loading, setLoading] = useState(false);
+  const [folderFormOpen, setFolderFormOpen] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
+  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
+  const [renamingFolder, setRenamingFolder] = useState(false);
+  const [renameName, setRenameName] = useState("");
 
-  // Active scope derived from the route: /feed/[id] or /<filter>.
+  // Active scope derived from the route: /feed/[id], /folder/[id], or /<filter>.
   const feedMatch = pathname.match(/^\/feed\/([^/]+)/);
   const activeFeedId = feedMatch?.[1] ?? null;
+  const folderMatch = pathname.match(/^\/folder\/([^/]+)/);
+  const activeFolderId = folderMatch?.[1] ?? null;
   const activeTopFilter: RssFilter | null = pathname.startsWith("/starred")
     ? "starred"
     : pathname.startsWith("/all")
@@ -45,12 +54,21 @@ export default function FeedSidebar({ onNavigate }: { onNavigate?: () => void })
         ? "unread"
         : null;
 
-  // Feed pages keep their filter in ?filter= (nuqs); top-level pages use the route.
+  // Feed and folder pages keep their filter in ?filter= (nuqs); top-level pages use the route.
   const [feedFilter, setFeedFilter] = useQueryState(
     "filter",
     parseAsStringEnum<RssFilter>(FILTERS).withDefault("unread"),
   );
-  const effectiveFilter: RssFilter = activeFeedId ? feedFilter : (activeTopFilter ?? "unread");
+  const scopedId = activeFeedId ?? activeFolderId;
+  const effectiveFilter: RssFilter = scopedId ? feedFilter : (activeTopFilter ?? "unread");
+
+  // A folder switch while the rename form is open would retarget the form at
+  // the newly active folder; close it instead (render-phase state adjust).
+  const [renameFolderId, setRenameFolderId] = useState<string | null>(activeFolderId);
+  if (activeFolderId !== renameFolderId) {
+    setRenameFolderId(activeFolderId);
+    setRenamingFolder(false);
+  }
 
   const addFeed = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -148,7 +166,188 @@ export default function FeedSidebar({ onNavigate }: { onNavigate?: () => void })
     }
   };
 
+  const createFolder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const name = newFolderName.trim();
+    if (!name) return;
+    setLoading(true);
+    setFeedsError("");
+    const request = (async () => {
+      await api("/api/rss/folders", { method: "POST", body: JSON.stringify({ name }) });
+      setNewFolderName("");
+      setFolderFormOpen(false);
+      loadFeeds();
+    })();
+    toast.promise(request, {
+      loading: "Creating folder…",
+      success: "Folder created",
+      error: (error) => (error instanceof Error ? error.message : "Failed to create folder"),
+    });
+    try {
+      await request;
+    } catch (e) {
+      setFeedsError(e instanceof Error ? e.message : "Failed to create folder");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const renameFolder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const name = renameName.trim();
+    if (!name || !activeFolderId) return;
+    setLoading(true);
+    setFeedsError("");
+    const request = (async () => {
+      await api(`/api/rss/folders/${activeFolderId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ name }),
+      });
+      setRenamingFolder(false);
+      loadFeeds();
+    })();
+    toast.promise(request, {
+      loading: "Renaming folder…",
+      success: "Folder renamed",
+      error: (error) => (error instanceof Error ? error.message : "Failed to rename folder"),
+    });
+    try {
+      await request;
+    } catch (e) {
+      setFeedsError(e instanceof Error ? e.message : "Failed to rename folder");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const removeFolder = async (folderId: string) => {
+    if (!confirm("Delete this folder? Its feeds stay, ungrouped.")) return;
+    const request = (async () => {
+      await api(`/api/rss/folders/${folderId}`, { method: "DELETE" });
+      invalidateArticlesCache();
+      loadFeeds();
+      // The footer only renders on /folder/:id, so without navigating the
+      // reader keeps querying the deleted folder and shows an empty view.
+      if (folderId === activeFolderId) {
+        router.replace(filterHref(effectiveFilter, query));
+        onNavigate?.();
+      }
+    })();
+    toast.promise(request, {
+      loading: "Deleting folder…",
+      success: "Folder deleted",
+      error: (error) => (error instanceof Error ? error.message : "Failed to delete folder"),
+    });
+    try {
+      await request;
+    } catch (e) {
+      setFeedsError(e instanceof Error ? e.message : "Failed to delete folder");
+    }
+  };
+
+  const markFolderRead = async (folderId: string) => {
+    setFeeds((prev) =>
+      prev.map((f) => (f.folderId === folderId ? { ...f, unreadCount: 0 } : f)),
+    );
+    setFolders((prev) =>
+      prev.map((f) => (f.id === folderId ? { ...f, unreadCount: 0 } : f)),
+    );
+    const request = api("/api/rss/articles/mark-all-read", {
+        method: "POST",
+        body: JSON.stringify({ folderId }),
+      });
+    toast.promise(request, {
+      loading: "Marking stories as read…",
+      success: "All stories marked read",
+      error: (error) => (error instanceof Error ? error.message : "Failed to mark all read"),
+    });
+    try {
+      await request;
+    } catch (e) {
+      setFeedsError(e instanceof Error ? e.message : "Failed to mark all read");
+    }
+    revalidateCurrent();
+    loadFeeds();
+  };
+
+  const moveFeed = async (feedId: string, folderId: string | null) => {
+    setFeedsError("");
+    const request = (async () => {
+      await api(`/api/rss/feeds/${feedId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ folderId }),
+      });
+      // Folder-scoped article views change membership, not just counts.
+      invalidateArticlesCache();
+      revalidateCurrent();
+      loadFeeds();
+    })();
+    toast.promise(request, {
+      loading: "Moving feed…",
+      success: folderId ? "Feed moved to folder" : "Feed removed from folder",
+      error: (error) => (error instanceof Error ? error.message : "Failed to move feed"),
+    });
+    try {
+      await request;
+    } catch (e) {
+      setFeedsError(e instanceof Error ? e.message : "Failed to move feed");
+    }
+  };
+
+  const toggleFolderCollapsed = (folderId: string) => {
+    setCollapsedFolders((prev) => {
+      const next = new Set(prev);
+      if (next.has(folderId)) next.delete(folderId);
+      else next.add(folderId);
+      return next;
+    });
+  };
+
   const activeFeed = feeds.find((f) => f.id === activeFeedId) ?? null;
+  const activeFolder = folders.find((f) => f.id === activeFolderId) ?? null;
+  const feedsByFolder = new Map<string, Feed[]>();
+  const ungroupedFeeds: Feed[] = [];
+  for (const f of feeds) {
+    if (f.folderId) {
+      const list = feedsByFolder.get(f.folderId) ?? [];
+      list.push(f);
+      feedsByFolder.set(f.folderId, list);
+    } else {
+      ungroupedFeeds.push(f);
+    }
+  }
+
+  const feedLinkCls = (active: boolean) =>
+    `mt-0.5 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition ${
+      active
+        ? "border border-white/20 bg-[#141414] font-medium text-white shadow-[inset_2px_0_0_#fafafa]"
+        : "border border-transparent text-[#8a8a8a] hover:bg-[#141414] hover:text-white"
+    }`;
+
+  const renderFeedLink = (f: Feed, nested: boolean) => {
+    const active = activeFeedId === f.id;
+    const href = query
+      ? `/feed/${f.id}?filter=${effectiveFilter}&q=${encodeURIComponent(query)}`
+      : `/feed/${f.id}?filter=${effectiveFilter}`;
+    return (
+      <Link
+        key={f.id}
+        href={href}
+        onClick={onNavigate}
+        className={`${feedLinkCls(active)} ${nested ? "ml-4" : ""}`}
+      >
+        <span
+          className={`h-1.5 w-1.5 shrink-0 rounded-full ${f.unreadCount > 0 ? "bg-white" : "bg-white/15"}`}
+        />
+        <span className="min-w-0 flex-1 truncate">{f.title}</span>
+        {f.unreadCount > 0 && (
+          <span className="shrink-0 rounded-full bg-white/10 px-2 py-0.5 font-mono text-[11px] text-[#e5e5e5]">
+            {f.unreadCount}
+          </span>
+        )}
+      </Link>
+    );
+  };
 
   return (
     <div className="flex h-full flex-col">
@@ -178,7 +377,7 @@ export default function FeedSidebar({ onNavigate }: { onNavigate?: () => void })
 
         <div className="mt-4 flex gap-1.5" role="tablist" aria-label="Article filter">
           {FILTERS.map((f) =>
-            activeFeedId ? (
+            scopedId ? (
               <button
                 key={f}
                 role="tab"
@@ -224,7 +423,7 @@ export default function FeedSidebar({ onNavigate }: { onNavigate?: () => void })
           href={filterHref(effectiveFilter, query)}
           onClick={onNavigate}
           className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition ${
-            activeFeedId === null
+            scopedId === null
               ? "border border-white/20 bg-[#141414] font-medium text-white shadow-[inset_2px_0_0_#fafafa]"
               : "border border-transparent text-[#8a8a8a] hover:bg-[#141414] hover:text-white"
           }`}
@@ -236,34 +435,82 @@ export default function FeedSidebar({ onNavigate }: { onNavigate?: () => void })
             </span>
           )}
         </Link>
-        {feeds.map((f) => {
-          const active = activeFeedId === f.id;
-          const href = query
-            ? `/feed/${f.id}?filter=${effectiveFilter}&q=${encodeURIComponent(query)}`
-            : `/feed/${f.id}?filter=${effectiveFilter}`;
-          return (
-            <Link
-              key={f.id}
-              href={href}
-              onClick={onNavigate}
-              className={`mt-0.5 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition ${
-                active
-                  ? "border border-white/20 bg-[#141414] font-medium text-white shadow-[inset_2px_0_0_#fafafa]"
-                  : "border border-transparent text-[#8a8a8a] hover:bg-[#141414] hover:text-white"
-              }`}
+        {folderFormOpen ? (
+          <form onSubmit={createFolder} className="mt-1 flex gap-1.5 px-1">
+            <input
+              autoFocus
+              value={newFolderName}
+              onChange={(e) => setNewFolderName(e.target.value)}
+              placeholder="Folder name"
+              aria-label="Folder name"
+              className="min-w-0 flex-1 rounded-[3px] border border-[#c8c1b5] bg-black px-2.5 py-1.5 text-[13px] outline-none placeholder:text-[#817c73] focus:border-white"
+            />
+            <button
+              disabled={loading}
+              className="inline-flex shrink-0 items-center gap-1 rounded-[3px] bg-[#fafafa] px-2.5 py-1.5 text-[13px] font-medium text-black transition hover:bg-[#e5e5e5] active:scale-[0.98] disabled:opacity-50"
             >
-              <span
-                className={`h-1.5 w-1.5 shrink-0 rounded-full ${f.unreadCount > 0 ? "bg-white" : "bg-white/15"}`}
-              />
-              <span className="min-w-0 flex-1 truncate">{f.title}</span>
-              {f.unreadCount > 0 && (
-                <span className="shrink-0 rounded-full bg-white/10 px-2 py-0.5 font-mono text-[11px] text-[#e5e5e5]">
-                  {f.unreadCount}
-                </span>
+              Add
+            </button>
+          </form>
+        ) : (
+          <button
+            onClick={() => setFolderFormOpen(true)}
+            className="mt-1 flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-xs text-[#817c73] transition hover:bg-[#141414] hover:text-white active:scale-[0.98]"
+          >
+            <FolderPlus size={13} weight="bold" /> New folder
+          </button>
+        )}
+        {folders.map((folder) => {
+          const active = activeFolderId === folder.id;
+          const isCollapsed = collapsedFolders.has(folder.id);
+          const folderFeeds = feedsByFolder.get(folder.id) ?? [];
+          const href = query
+            ? `/folder/${folder.id}?filter=${effectiveFilter}&q=${encodeURIComponent(query)}`
+            : `/folder/${folder.id}?filter=${effectiveFilter}`;
+          return (
+            <div key={folder.id} className="mt-2">
+              <div className="flex items-center gap-0.5">
+                <button
+                  onClick={() => toggleFolderCollapsed(folder.id)}
+                  aria-expanded={!isCollapsed}
+                  aria-label={`${isCollapsed ? "Expand" : "Collapse"} folder ${folder.name}`}
+                  className="shrink-0 rounded p-1 text-[#817c73] transition hover:text-white"
+                >
+                  <CaretRight
+                    size={11}
+                    weight="bold"
+                    className={`transition-transform ${isCollapsed ? "" : "rotate-90"}`}
+                  />
+                </button>
+                <Link
+                  href={href}
+                  onClick={onNavigate}
+                  className={`${feedLinkCls(active)} mt-0`}
+                >
+                  <Folder size={13} weight={active ? "fill" : "bold"} className="shrink-0" />
+                  <span className="min-w-0 flex-1 truncate">{folder.name}</span>
+                  {folder.unreadCount > 0 && (
+                    <span className="shrink-0 rounded-full bg-white/10 px-2 py-0.5 font-mono text-[11px] text-[#e5e5e5]">
+                      {folder.unreadCount}
+                    </span>
+                  )}
+                </Link>
+              </div>
+              {!isCollapsed && folderFeeds.map((f) => renderFeedLink(f, true))}
+              {!isCollapsed && folderFeeds.length === 0 && (
+                <p className="ml-4 px-3 py-1.5 text-xs text-[#787774]">
+                  No feeds here yet. Open a feed to file it into this folder.
+                </p>
               )}
-            </Link>
+            </div>
           );
         })}
+        {folders.length > 0 && ungroupedFeeds.length > 0 && (
+          <p className="mt-3 px-3 font-mono text-[10px] uppercase tracking-[0.18em] text-[#817c73]">
+            Ungrouped
+          </p>
+        )}
+        {ungroupedFeeds.map((f) => renderFeedLink(f, false))}
         {feeds.length === 0 && (
           <div className="rounded-lg border border-white/10 bg-[#0a0a0a] p-4 text-[13px] text-[#787774]">
             No feeds yet. Add your first feed above to start a quiet reading list.
@@ -293,6 +540,72 @@ export default function FeedSidebar({ onNavigate }: { onNavigate?: () => void })
             <button
               onClick={() => removeFeed(activeFeedId)}
               title="Remove feed"
+              className="inline-flex items-center gap-1 rounded-[6px] border border-white/10 bg-white/5 px-2 py-1.5 text-xs text-[#d4d4d4] transition hover:bg-white/10 active:scale-[0.98]"
+            >
+              <Trash size={13} weight="bold" />
+            </button>
+          </div>
+          {folders.length > 0 && (
+            <select
+              value={activeFeed.folderId ?? ""}
+              onChange={(e) => moveFeed(activeFeedId, e.target.value || null)}
+              aria-label="Move feed to folder"
+              className="mt-1.5 w-full rounded-[6px] border border-white/10 bg-transparent px-2 py-1.5 text-xs text-[#d4d4d4] outline-none transition hover:bg-white/5 [&>option]:bg-[#141414]"
+            >
+              <option value="">No folder</option>
+              {folders.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.name}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+      )}
+
+      {activeFolderId && activeFolder && (
+        <div className="border-t border-white/10 p-3">
+          {renamingFolder ? (
+            <form onSubmit={renameFolder} className="mb-2 flex gap-1.5">
+              <input
+                autoFocus
+                value={renameName}
+                onChange={(e) => setRenameName(e.target.value)}
+                aria-label="New folder name"
+                className="min-w-0 flex-1 rounded-[3px] border border-[#c8c1b5] bg-black px-2.5 py-1.5 text-[13px] outline-none placeholder:text-[#817c73] focus:border-white"
+              />
+              <button
+                disabled={loading}
+                className="inline-flex shrink-0 items-center gap-1 rounded-[3px] bg-[#fafafa] px-2.5 py-1.5 text-[13px] font-medium text-black transition hover:bg-[#e5e5e5] active:scale-[0.98] disabled:opacity-50"
+              >
+                Save
+              </button>
+            </form>
+          ) : (
+            <p className="mb-2 truncate px-1 font-mono text-[11px] uppercase tracking-[0.1em] text-[#787774]">
+              {activeFolder.name}
+            </p>
+          )}
+          <div className="flex gap-1.5">
+            <button
+              onClick={() => {
+                setRenameName(activeFolder.name);
+                setRenamingFolder((v) => !v);
+              }}
+              className="flex-1 rounded-[6px] border border-white/10 bg-transparent px-2 py-1.5 text-xs transition hover:bg-white/5 active:scale-[0.98]"
+            >
+              Rename
+            </button>
+            <button
+              onClick={() => markFolderRead(activeFolderId)}
+              title="Mark all read"
+              className="flex flex-1 items-center justify-center gap-1 rounded-[6px] border border-white/10 bg-transparent px-2 py-1.5 text-xs transition hover:bg-white/5 active:scale-[0.98]"
+            >
+              <Checks size={13} weight="bold" /> Read
+            </button>
+            <button
+              onClick={() => removeFolder(activeFolderId)}
+              title="Delete folder"
               className="inline-flex items-center gap-1 rounded-[6px] border border-white/10 bg-white/5 px-2 py-1.5 text-xs text-[#d4d4d4] transition hover:bg-white/10 active:scale-[0.98]"
             >
               <Trash size={13} weight="bold" />

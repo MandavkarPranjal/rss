@@ -12,11 +12,13 @@ import {
 } from "react";
 import { useSession } from "@/lib/auth-client";
 import { api } from "@/lib/rss-client";
-import type { Article, Feed } from "@/lib/rss-types";
+import type { Article, Feed, Folder } from "@/lib/rss-types";
 
 type RssStore = {
   feeds: Feed[];
   setFeeds: React.Dispatch<React.SetStateAction<Feed[]>>;
+  folders: Folder[];
+  setFolders: React.Dispatch<React.SetStateAction<Folder[]>>;
   totalUnread: number;
   loadFeeds: () => void;
   feedsError: string;
@@ -39,6 +41,7 @@ type RssStore = {
 
 const RssContext = createContext<RssStore | null>(null);
 const EMPTY_FEEDS: Feed[] = [];
+const EMPTY_FOLDERS: Folder[] = [];
 const EMPTY_ARTICLES_CACHE: Record<string, Article[]> = {};
 const EMPTY_ARTICLES_ERROR: Record<string, string> = {};
 const EMPTY_SEEN_IDS = new Set<string>();
@@ -49,6 +52,7 @@ export function RssStoreProvider({ children }: { children: ReactNode }) {
   const sessionUserId = session?.user?.id ?? null;
 
   const [feeds, setFeeds] = useState<Feed[]>([]);
+  const [folders, setFolders] = useState<Folder[]>([]);
   const [feedsError, setFeedsError] = useState("");
   const [articlesCache, setArticlesCache] = useState<Record<string, Article[]>>({});
   const [articlesError, setArticlesError] = useState<Record<string, string>>({});
@@ -62,14 +66,18 @@ export function RssStoreProvider({ children }: { children: ReactNode }) {
   // account changed while a request was in flight.
   const userIdRef = useRef<string | null>(null);
 
+  // Folders ride along with every feed load: folder unread counts come from
+  // the same unread articles, so any refresh of one is stale without the
+  // other. Callers keep using `loadFeeds` for both.
   const loadFeeds = useCallback(() => {
     const userId = userIdRef.current;
-    api("/api/rss/feeds")
-      .then((data) => {
+    Promise.all([api("/api/rss/feeds"), api("/api/rss/folders")])
+      .then(([feedsData, foldersData]) => {
         // The account may have changed while the request was in flight;
         // never let the previous account's response overwrite the new list.
         if (userIdRef.current !== userId) return;
-        setFeeds(data);
+        setFeeds(feedsData);
+        setFolders(foldersData);
         setFeedsError("");
       })
       .catch((e) => {
@@ -88,6 +96,7 @@ export function RssStoreProvider({ children }: { children: ReactNode }) {
     // article views to refetch under the new session after the cache wipe
     // instead of sticking on a loading skeleton.
     setFeeds([]);
+    setFolders([]);
     setFeedsError("");
     setArticlesCache({});
     setArticlesError({});
@@ -103,6 +112,7 @@ export function RssStoreProvider({ children }: { children: ReactNode }) {
   // transition.
   const storeReady = activeUserId === sessionUserId;
   const visibleFeeds = storeReady ? feeds : EMPTY_FEEDS;
+  const visibleFolders = storeReady ? folders : EMPTY_FOLDERS;
   const visibleFeedsError = storeReady ? feedsError : "";
   const visibleArticlesCache = storeReady ? articlesCache : EMPTY_ARTICLES_CACHE;
   const visibleArticlesError = storeReady ? articlesError : EMPTY_ARTICLES_ERROR;
@@ -181,6 +191,8 @@ export function RssStoreProvider({ children }: { children: ReactNode }) {
     () => ({
       feeds: visibleFeeds,
       setFeeds,
+      folders: visibleFolders,
+      setFolders,
       totalUnread,
       loadFeeds,
       feedsError: visibleFeedsError,
@@ -202,6 +214,7 @@ export function RssStoreProvider({ children }: { children: ReactNode }) {
     }),
     [
       visibleFeeds,
+      visibleFolders,
       totalUnread,
       loadFeeds,
       visibleFeedsError,

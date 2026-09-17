@@ -1,10 +1,10 @@
 import { Elysia, t } from "elysia";
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, isNotNull, ne, or, sql } from "drizzle-orm";
 import { encodeHTML } from "entities";
 import { auth } from "./auth";
 import { db } from "./db";
-import { article, feed } from "./db/schema";
+import { article, feed, folder } from "./db/schema";
 import { decodeEntities, decodeHtmlTextNodes } from "./decode-entities";
 import { fetchFeed, normalizeFeedUrl } from "./rss";
 import { refreshFeed } from "./feed-refresh";
@@ -89,6 +89,85 @@ export const rssApi = new Elysia({ prefix: "/api/rss" })
     return Response.json({ error: "Internal server error" }, { status: 500 });
   })
 
+  // ---- Folders ----
+  .get("/folders", async ({ request }) => {
+    const user = await requireUser(request);
+    const folders = await db
+      .select()
+      .from(folder)
+      .where(eq(folder.userId, user.id))
+      .orderBy(folder.name);
+    // Single GROUP BY instead of one count query per folder (N+1).
+    const counts = await db
+      .select({ folderId: feed.folderId, count: sql<number>`count(*)::int` })
+      .from(article)
+      .innerJoin(feed, eq(article.feedId, feed.id))
+      .where(and(eq(article.userId, user.id), eq(article.isRead, false), isNotNull(feed.folderId)))
+      .groupBy(feed.folderId);
+    const byFolder = new Map(counts.map((c) => [c.folderId, c.count]));
+    return folders.map((f) => ({ ...f, unreadCount: byFolder.get(f.id) ?? 0 }));
+  })
+
+  .post(
+    "/folders",
+    async ({ request, body }) => {
+      const user = await requireUser(request);
+      const name = body.name.trim();
+      if (!name) return Response.json({ error: "Folder name is required" }, { status: 400 });
+      const existing = await db
+        .select({ id: folder.id })
+        .from(folder)
+        .where(and(eq(folder.userId, user.id), eq(folder.name, name)))
+        .limit(1);
+      if (existing.length > 0) {
+        return Response.json({ error: "You already have a folder with this name" }, { status: 409 });
+      }
+      const folderId = `fol_${randomUUID()}`;
+      await db.insert(folder).values({ id: folderId, userId: user.id, name });
+      return { id: folderId, name };
+    },
+    { body: t.Object({ name: t.String({ minLength: 1, maxLength: 100 }) }) },
+  )
+
+  .patch(
+    "/folders/:id",
+    async ({ request, params, body }) => {
+      const user = await requireUser(request);
+      const name = body.name.trim();
+      if (!name) return Response.json({ error: "Folder name is required" }, { status: 400 });
+      const duplicate = await db
+        .select({ id: folder.id })
+        .from(folder)
+        .where(and(eq(folder.userId, user.id), eq(folder.name, name), ne(folder.id, params.id)))
+        .limit(1);
+      if (duplicate.length > 0) {
+        return Response.json({ error: "You already have a folder with this name" }, { status: 409 });
+      }
+      const [updated] = await db
+        .update(folder)
+        .set({ name })
+        .where(and(eq(folder.id, params.id), eq(folder.userId, user.id)))
+        .returning({ id: folder.id, name: folder.name });
+      if (!updated) return Response.json({ error: "Folder not found" }, { status: 404 });
+      return updated;
+    },
+    { body: t.Object({ name: t.String({ minLength: 1, maxLength: 100 }) }) },
+  )
+
+  .delete("/folders/:id", async ({ request, params }) => {
+    const user = await requireUser(request);
+    // Deleting a folder keeps its feeds: they fall back to ungrouped.
+    await db
+      .update(feed)
+      .set({ folderId: null })
+      .where(and(eq(feed.folderId, params.id), eq(feed.userId, user.id)));
+    const deleted = await db
+      .delete(folder)
+      .where(and(eq(folder.id, params.id), eq(folder.userId, user.id)))
+      .returning({ id: folder.id });
+    return { deleted: deleted.length > 0 };
+  })
+
   // ---- Feeds ----
   .get("/feeds", async ({ request }) => {
     const user = await requireUser(request);
@@ -166,6 +245,29 @@ export const rssApi = new Elysia({ prefix: "/api/rss" })
     return { deleted: deleted.length > 0 };
   })
 
+  .patch(
+    "/feeds/:id",
+    async ({ request, params, body }) => {
+      const user = await requireUser(request);
+      if (body.folderId) {
+        const [target] = await db
+          .select({ id: folder.id })
+          .from(folder)
+          .where(and(eq(folder.id, body.folderId), eq(folder.userId, user.id)))
+          .limit(1);
+        if (!target) return Response.json({ error: "Folder not found" }, { status: 404 });
+      }
+      const [updated] = await db
+        .update(feed)
+        .set({ folderId: body.folderId ?? null })
+        .where(and(eq(feed.id, params.id), eq(feed.userId, user.id)))
+        .returning({ id: feed.id, folderId: feed.folderId });
+      if (!updated) return Response.json({ error: "Feed not found" }, { status: 404 });
+      return updated;
+    },
+    { body: t.Object({ folderId: t.Optional(t.Union([t.String(), t.Null()])) }) },
+  )
+
   .post("/feeds/:id/refresh", async ({ request, params }) => {
     const user = await requireUser(request);
     const [f] = await db
@@ -185,6 +287,7 @@ export const rssApi = new Elysia({ prefix: "/api/rss" })
     const offset = Number(query.offset ?? 0);
     const conditions = [eq(article.userId, user.id)];
     if (query.feedId) conditions.push(eq(article.feedId, query.feedId));
+    if (query.folderId) conditions.push(eq(feed.folderId, query.folderId));
     if (query.filter === "unread") conditions.push(eq(article.isRead, false));
     if (query.filter === "starred") conditions.push(eq(article.isStarred, true));
     if (query.q) {
@@ -289,6 +392,16 @@ export const rssApi = new Elysia({ prefix: "/api/rss" })
       const user = await requireUser(request);
       const conditions = [eq(article.userId, user.id), eq(article.isRead, false)];
       if (body.feedId) conditions.push(eq(article.feedId, body.feedId));
+      if (body.folderId)
+        conditions.push(
+          inArray(
+            article.feedId,
+            db
+              .select({ id: feed.id })
+              .from(feed)
+              .where(and(eq(feed.userId, user.id), eq(feed.folderId, body.folderId))),
+          ),
+        );
       if (body.articleIds && body.articleIds.length > 0)
         conditions.push(inArray(article.id, body.articleIds));
       await db.update(article).set({ isRead: true }).where(and(...conditions));
@@ -297,6 +410,7 @@ export const rssApi = new Elysia({ prefix: "/api/rss" })
     {
       body: t.Object({
         feedId: t.Optional(t.String()),
+        folderId: t.Optional(t.String()),
         articleIds: t.Optional(t.Array(t.String())),
       }),
     },

@@ -7,10 +7,12 @@ import { useSelectedArticleId } from "./use-articles";
 
 export default function FeedView({
   feedId,
+  folderId = null,
   filter,
   heading,
 }: {
   feedId: string | null;
+  folderId?: string | null;
   filter: RssFilter;
   heading: string;
 }) {
@@ -23,7 +25,7 @@ export default function FeedView({
   return (
     <div className="flex min-h-0 min-w-0 flex-1">
       <div className={`${articleId ? "hidden" : "flex"} min-h-0 sm:shrink-0 md:flex`}>
-        <ArticleList feedId={feedId} filter={filter} heading={heading} />
+        <ArticleList feedId={feedId} folderId={folderId} filter={filter} heading={heading} />
       </div>
       <main
         className={`${articleId ? "flex" : "hidden"} paper-grain min-w-0 flex-1 flex-col overflow-hidden md:flex`}
