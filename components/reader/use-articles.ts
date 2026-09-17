@@ -22,11 +22,11 @@ export function useSelectedArticleId() {
   );
 }
 
-export function articlesKey(feedId: string | null, filter: RssFilter, query: string) {
-  return `${feedId ?? "all"}|${filter}|${query}`;
+export function articlesKey(feedId: string | null, filter: RssFilter, query: string, folderId: string | null = null) {
+  return `${folderId ? `folder:${folderId}` : (feedId ?? "all")}|${filter}|${query}`;
 }
 
-export function useArticles(feedId: string | null, filter: RssFilter, query: string) {
+export function useArticles(feedId: string | null, filter: RssFilter, query: string, folderId: string | null = null) {
   const {
     articlesCache,
     setArticlesCache,
@@ -41,7 +41,7 @@ export function useArticles(feedId: string | null, filter: RssFilter, query: str
     setFeedsError,
   } = useRssStore();
 
-  const key = articlesKey(feedId, filter, query);
+  const key = articlesKey(feedId, filter, query, folderId);
   const articles: Article[] = useMemo(
     () => articlesCache[key] ?? [],
     [articlesCache, key],
@@ -76,6 +76,7 @@ export function useArticles(feedId: string | null, filter: RssFilter, query: str
     let cancelled = false;
     const params = new URLSearchParams({ filter, limit: "100" });
     if (feedId) params.set("feedId", feedId);
+    if (folderId) params.set("folderId", folderId);
     if (query) params.set("q", query);
     // `fetchedTickRef` means "data for this tick landed": mark it only on
     // success. Pre-marking here let a failed revalidation look fetched, so
@@ -135,7 +136,7 @@ export function useArticles(feedId: string | null, filter: RssFilter, query: str
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed fetch, refs are stable
-  }, [sessionUserId, feedId, filter, query, revalidateTick]);
+  }, [sessionUserId, feedId, folderId, filter, query, revalidateTick]);
 
   return { articles, loading, error, cacheKey: key, retry };
 }

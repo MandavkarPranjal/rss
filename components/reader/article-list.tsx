@@ -10,14 +10,17 @@ import { useArticles, useSearchQuery, useSelectedArticleId } from "./use-article
 
 type Props = {
   feedId: string | null;
+  folderId?: string | null;
   filter: RssFilter;
   heading: string;
 };
 
-export default function ArticleList({ feedId, filter, heading }: Props) {
+export default function ArticleList({ feedId, folderId = null, filter, heading }: Props) {
   const {
     feeds,
     setFeeds,
+    folders,
+    setFolders,
     patchCachedArticle,
     revalidateCurrent,
     loadFeeds,
@@ -28,10 +31,11 @@ export default function ArticleList({ feedId, filter, heading }: Props) {
   const [query] = useSearchQuery();
   const [, setArticleId] = useSelectedArticleId();
   const [selectedId] = useSelectedArticleId();
-  const { articles, loading, error, retry } = useArticles(feedId, filter, query.trim());
+  const { articles, loading, error, retry } = useArticles(feedId, filter, query.trim(), folderId);
   const listRef = useRef<HTMLDivElement>(null);
 
   const activeFeed = feeds.find((f) => f.id === feedId) ?? null;
+  const activeFolder = folders.find((f) => f.id === folderId) ?? null;
 
   // Do not replace the article list while a story is open. A refresh can add
   // rows at the top and change the cached article object, which is disruptive
@@ -91,6 +95,16 @@ export default function ArticleList({ feedId, filter, heading }: Props) {
           f.id === a.feedId ? { ...f, unreadCount: Math.max(0, (f.unreadCount ?? 1) - 1) } : f,
         ),
       );
+      const articleFolderId = feeds.find((f) => f.id === a.feedId)?.folderId;
+      if (articleFolderId) {
+        setFolders((prev) =>
+          prev.map((f) =>
+            f.id === articleFolderId
+              ? { ...f, unreadCount: Math.max(0, (f.unreadCount ?? 1) - 1) }
+              : f,
+          ),
+        );
+      }
       api(`/api/rss/articles/${a.id}`, {
         method: "PATCH",
         body: JSON.stringify({ isRead: true }),
@@ -133,6 +147,18 @@ export default function ArticleList({ feedId, filter, heading }: Props) {
         return n ? { ...f, unreadCount: Math.max(0, (f.unreadCount ?? n) - n) } : f;
       }),
     );
+    const folderByFeed = new Map(feeds.map((f) => [f.id, f.folderId]));
+    const perFolder = new Map<string, number>();
+    for (const a of unreadShown) {
+      const fid = folderByFeed.get(a.feedId);
+      if (fid) perFolder.set(fid, (perFolder.get(fid) ?? 0) + 1);
+    }
+    setFolders((prev) =>
+      prev.map((f) => {
+        const n = perFolder.get(f.id);
+        return n ? { ...f, unreadCount: Math.max(0, (f.unreadCount ?? n) - n) } : f;
+      }),
+    );
     setArticlesCache((prev) => {
       const next: Record<string, Article[]> = {};
       for (const [k, list] of Object.entries(prev)) {
@@ -143,7 +169,11 @@ export default function ArticleList({ feedId, filter, heading }: Props) {
     const request = api("/api/rss/articles/mark-all-read", {
         method: "POST",
         body: JSON.stringify(
-          feedId ? { feedId, articleIds: [...ids] } : { articleIds: [...ids] },
+          feedId
+            ? { feedId, articleIds: [...ids] }
+            : folderId
+              ? { folderId, articleIds: [...ids] }
+              : { articleIds: [...ids] },
         ),
       });
     toast.promise(request, {
@@ -175,7 +205,7 @@ export default function ArticleList({ feedId, filter, heading }: Props) {
                 {articles.length} {articles.length === 1 ? "story" : "stories"}
               </>
             )}
-            {activeFeed ? ` · ${activeFeed.title}` : ""}
+            {activeFeed ? ` · ${activeFeed.title}` : activeFolder ? ` · ${activeFolder.name}` : ""}
           </p>
         </div>
         <button

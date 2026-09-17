@@ -80,6 +80,18 @@ export const passkey = pgTable("passkey", {
 
 // ---- RSS reader tables ----
 
+export const folder = pgTable("folder", {
+  id: text("id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => [
+  index("folder_user_id_idx").on(t.userId),
+  uniqueIndex("folder_user_name_uidx").on(t.userId, t.name),
+]);
+
 export const feed = pgTable("feed", {
   id: text("id").primaryKey(),
   userId: text("user_id")
@@ -87,6 +99,9 @@ export const feed = pgTable("feed", {
     .references(() => user.id, { onDelete: "cascade" }),
   url: text("url").notNull(),
   title: text("title").notNull(),
+  // Feeds without a folder render ungrouped; deleting a folder unfolders its
+  // feeds (set null) rather than removing them.
+  folderId: text("folder_id").references(() => folder.id, { onDelete: "set null" }),
   siteUrl: text("site_url"),
   description: text("description"),
   lastFetchedAt: timestamp("last_fetched_at"),
@@ -96,6 +111,7 @@ export const feed = pgTable("feed", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (t) => [
   index("feed_user_id_idx").on(t.userId),
+  index("feed_folder_id_idx").on(t.folderId),
   uniqueIndex("feed_user_url_uidx").on(t.userId, t.url),
 ]);
 
@@ -128,5 +144,6 @@ export const article = pgTable("article", {
   uniqueIndex("article_feed_guid_uidx").on(t.feedId, t.guid),
 ]);
 
+export type Folder = typeof folder.$inferSelect;
 export type Feed = typeof feed.$inferSelect;
 export type Article = typeof article.$inferSelect;
