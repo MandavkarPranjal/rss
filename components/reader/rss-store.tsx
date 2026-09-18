@@ -65,6 +65,11 @@ export function RssStoreProvider({ children }: { children: ReactNode }) {
   // sessionUserId effect below so fetch callbacks can tell whether the
   // account changed while a request was in flight.
   const userIdRef = useRef<string | null>(null);
+  // Generation counter for overlapping loadFeeds calls (the same pattern the
+  // settings form uses for passkey loads): only the newest load may commit,
+  // so a stale callback can't mix an older feed/folder snapshot into the
+  // current one.
+  const loadSeqRef = useRef(0);
 
   // Folders ride along with every feed load: folder unread counts come from
   // the same unread articles, so any refresh of one is stale without the
@@ -72,7 +77,8 @@ export function RssStoreProvider({ children }: { children: ReactNode }) {
   // independently: a failed folders call must never suppress the feed list.
   const loadFeeds = useCallback(() => {
     const userId = userIdRef.current;
-    const stale = () => userIdRef.current !== userId;
+    const seq = ++loadSeqRef.current;
+    const stale = () => userIdRef.current !== userId || seq !== loadSeqRef.current;
     api("/api/rss/feeds")
       .then((data) => {
         // The account may have changed while the request was in flight;
