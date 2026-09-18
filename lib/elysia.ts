@@ -50,6 +50,21 @@ function classicEntityNames(encoded: string): string {
  */
 const ENTITY_SENSITIVE_ASCII = new Set(["&", "<", ">", '"', "'"]);
 
+// Postgres unique-violation (23505), surfaced through neon-serverless as a
+// plain Error with a `code` property.
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === "23505"
+  );
+}
+
+// Marker returned inside a `.catch` so a unique violation can be told apart
+// from an empty (not-found) result without another query.
+const CONFLICT = Symbol("conflict");
+
 function numericEntityVariant(value: string, radix: 10 | 16): string {
   return Array.from(value, (ch) => {
     const code = ch.codePointAt(0) ?? 0;
@@ -123,7 +138,16 @@ export const rssApi = new Elysia({ prefix: "/api/rss" })
         return Response.json({ error: "You already have a folder with this name" }, { status: 409 });
       }
       const folderId = `fol_${randomUUID()}`;
-      await db.insert(folder).values({ id: folderId, userId: user.id, name });
+      // The check above loses races between concurrent creates; the unique
+      // index catches the loser, so translate the violation into the same 409.
+      try {
+        await db.insert(folder).values({ id: folderId, userId: user.id, name });
+      } catch (e) {
+        if (isUniqueViolation(e)) {
+          return Response.json({ error: "You already have a folder with this name" }, { status: 409 });
+        }
+        throw e;
+      }
       return { id: folderId, name };
     },
     { body: t.Object({ name: t.String({ minLength: 1, maxLength: 100 }) }) },
@@ -143,11 +167,20 @@ export const rssApi = new Elysia({ prefix: "/api/rss" })
       if (duplicate.length > 0) {
         return Response.json({ error: "You already have a folder with this name" }, { status: 409 });
       }
+      // Same race as create: a concurrent rename can pass the duplicate check
+      // above and then hit the unique index — translate it into the same 409.
       const [updated] = await db
         .update(folder)
         .set({ name })
         .where(and(eq(folder.id, params.id), eq(folder.userId, user.id)))
-        .returning({ id: folder.id, name: folder.name });
+        .returning({ id: folder.id, name: folder.name })
+        .catch((e) => {
+          if (isUniqueViolation(e)) return [CONFLICT] as const;
+          throw e;
+        });
+      if (updated === CONFLICT) {
+        return Response.json({ error: "You already have a folder with this name" }, { status: 409 });
+      }
       if (!updated) return Response.json({ error: "Folder not found" }, { status: 404 });
       return updated;
     },
@@ -156,11 +189,8 @@ export const rssApi = new Elysia({ prefix: "/api/rss" })
 
   .delete("/folders/:id", async ({ request, params }) => {
     const user = await requireUser(request);
-    // Deleting a folder keeps its feeds: they fall back to ungrouped.
-    await db
-      .update(feed)
-      .set({ folderId: null })
-      .where(and(eq(feed.folderId, params.id), eq(feed.userId, user.id)));
+    // Deleting a folder keeps its feeds: the `ON DELETE SET NULL` foreign key
+    // unfolders them in the same statement, so there is no two-write window.
     const deleted = await db
       .delete(folder)
       .where(and(eq(folder.id, params.id), eq(folder.userId, user.id)))
@@ -259,13 +289,16 @@ export const rssApi = new Elysia({ prefix: "/api/rss" })
       }
       const [updated] = await db
         .update(feed)
-        .set({ folderId: body.folderId ?? null })
+        .set({ folderId: body.folderId })
         .where(and(eq(feed.id, params.id), eq(feed.userId, user.id)))
         .returning({ id: feed.id, folderId: feed.folderId });
       if (!updated) return Response.json({ error: "Feed not found" }, { status: 404 });
       return updated;
     },
-    { body: t.Object({ folderId: t.Optional(t.Union([t.String(), t.Null()])) }) },
+    // folderId is required (null unfolders): an optional field would silently
+    // unfile the feed whenever a PATCH omitted it, and an empty string would
+    // skip validation above and die on the foreign key.
+    { body: t.Object({ folderId: t.Union([t.String({ minLength: 1 }), t.Null()]) }) },
   )
 
   .post("/feeds/:id/refresh", async ({ request, params }) => {
@@ -410,7 +443,9 @@ export const rssApi = new Elysia({ prefix: "/api/rss" })
     {
       body: t.Object({
         feedId: t.Optional(t.String()),
-        folderId: t.Optional(t.String()),
+        // minLength 1: an empty folderId is falsy and would skip the folder
+        // restriction below, marking every unread article in the account.
+        folderId: t.Optional(t.String({ minLength: 1 })),
         articleIds: t.Optional(t.Array(t.String())),
       }),
     },
