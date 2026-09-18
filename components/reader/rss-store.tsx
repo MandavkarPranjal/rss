@@ -68,21 +68,31 @@ export function RssStoreProvider({ children }: { children: ReactNode }) {
 
   // Folders ride along with every feed load: folder unread counts come from
   // the same unread articles, so any refresh of one is stale without the
-  // other. Callers keep using `loadFeeds` for both.
+  // other. Callers keep using `loadFeeds` for both. The two requests settle
+  // independently: a failed folders call must never suppress the feed list.
   const loadFeeds = useCallback(() => {
     const userId = userIdRef.current;
-    Promise.all([api("/api/rss/feeds"), api("/api/rss/folders")])
-      .then(([feedsData, foldersData]) => {
+    const stale = () => userIdRef.current !== userId;
+    api("/api/rss/feeds")
+      .then((data) => {
         // The account may have changed while the request was in flight;
         // never let the previous account's response overwrite the new list.
-        if (userIdRef.current !== userId) return;
-        setFeeds(feedsData);
-        setFolders(foldersData);
+        if (stale()) return;
+        setFeeds(data);
         setFeedsError("");
       })
       .catch((e) => {
-        if (userIdRef.current !== userId) return;
+        if (stale()) return;
         setFeedsError(e instanceof Error ? e.message : "Failed to load feeds");
+      });
+    api("/api/rss/folders")
+      .then((data) => {
+        if (stale()) return;
+        setFolders(data);
+      })
+      .catch((e) => {
+        if (stale()) return;
+        setFeedsError(e instanceof Error ? e.message : "Failed to load folders");
       });
   }, []);
 

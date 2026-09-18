@@ -31,7 +31,7 @@ export default function ArticleReader({
   showBack?: boolean;
 }) {
   const cached = useCachedArticle(articleId);
-  const { patchCachedArticle, setFeeds } = useRssStore();
+  const { patchCachedArticle, setFeeds, feeds, setFolders } = useRssStore();
   // Keyed by article id so a stale fetch for a previous article can never
   // render under a new id — no reset effect needed.
   const [direct, setDirect] = useState<{ id: string; article: Article } | null>(null);
@@ -137,6 +137,16 @@ export default function ArticleReader({
         f.id === article.feedId ? { ...f, unreadCount: Math.max(0, (f.unreadCount ?? 1) - 1) } : f,
       ),
     );
+    const articleFolderId = feeds.find((f) => f.id === article.feedId)?.folderId;
+    if (articleFolderId) {
+      setFolders((prev) =>
+        prev.map((f) =>
+          f.id === articleFolderId
+            ? { ...f, unreadCount: Math.max(0, (f.unreadCount ?? 1) - 1) }
+            : f,
+        ),
+      );
+    }
     api(`/api/rss/articles/${article.id}`, {
       method: "PATCH",
       body: JSON.stringify({ isRead: true }),
