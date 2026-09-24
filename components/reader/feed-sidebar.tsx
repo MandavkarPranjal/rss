@@ -2,9 +2,21 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { parseAsStringEnum, useQueryState } from "nuqs";
 import { CaretRight, Checks, Folder, FolderPlus, Plus, Trash } from "@phosphor-icons/react";
+import {
+  DndContext,
+  DragOverlay,
+  MouseSensor,
+  TouchSensor,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
 import { toast } from "sonner";
 import { api } from "@/lib/rss-client";
 import type { Feed, RssFilter } from "@/lib/rss-types";
@@ -12,9 +24,88 @@ import { useRssStore } from "./rss-store";
 import { useSearchQuery, useSelectedArticleId } from "./use-articles";
 
 const FILTERS: RssFilter[] = ["all", "unread", "starred"];
+const UNGROUPED_DROP_ID = "__ungrouped__";
+
+type DropTargetData = { folderId: string | null };
 
 function filterHref(f: RssFilter, query: string) {
   return query ? `/${f}?q=${encodeURIComponent(query)}` : `/${f}`;
+}
+
+const feedLinkCls = (active: boolean) =>
+  `mt-0.5 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition ${
+    active
+      ? "border border-white/20 bg-[#141414] font-medium text-white shadow-[inset_2px_0_0_#fafafa]"
+      : "border border-transparent text-[#8a8a8a] hover:bg-[#141414] hover:text-white"
+  }`;
+
+function FeedLink({
+  feed,
+  href,
+  nested,
+  active,
+  onNavigate,
+}: {
+  feed: Feed;
+  href: string;
+  nested: boolean;
+  active: boolean;
+  onNavigate?: () => void;
+}) {
+  // Mouse: drag starts after 8px so clicks still navigate.
+  // Touch: long-press starts a drag; movement before that scrolls the list.
+  const { setNodeRef, listeners, isDragging } = useDraggable({
+    id: feed.id,
+    data: { type: "feed" },
+  });
+  return (
+    <Link
+      ref={setNodeRef}
+      href={href}
+      onClick={onNavigate}
+      className={`${feedLinkCls(active)} ${nested ? "ml-4" : ""} cursor-grab active:cursor-grabbing ${
+        isDragging ? "opacity-40" : ""
+      }`}
+      {...listeners}
+    >
+      <span
+        className={`h-1.5 w-1.5 shrink-0 rounded-full ${feed.unreadCount > 0 ? "bg-white" : "bg-white/15"}`}
+      />
+      <span className="min-w-0 flex-1 truncate">{feed.title}</span>
+      {feed.unreadCount > 0 && (
+        <span className="shrink-0 rounded-full bg-white/10 px-2 py-0.5 font-mono text-[11px] text-[#e5e5e5]">
+          {feed.unreadCount}
+        </span>
+      )}
+    </Link>
+  );
+}
+
+function DropZone({
+  id,
+  folderId,
+  className,
+  children,
+}: {
+  id: string;
+  folderId: string | null;
+  className?: string;
+  children: ReactNode;
+}) {
+  const { setNodeRef, isOver } = useDroppable({
+    id,
+    data: { folderId } satisfies DropTargetData,
+  });
+  return (
+    <div
+      ref={setNodeRef}
+      className={`${className ?? ""} ${
+        isOver ? "rounded-lg bg-white/[0.06] ring-1 ring-white/25" : ""
+      }`}
+    >
+      {children}
+    </div>
+  );
 }
 
 export default function FeedSidebar({ onNavigate }: { onNavigate?: () => void }) {
@@ -40,6 +131,11 @@ export default function FeedSidebar({ onNavigate }: { onNavigate?: () => void })
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
   const [renamingFolder, setRenamingFolder] = useState(false);
   const [renameName, setRenameName] = useState("");
+  const [dragFeedId, setDragFeedId] = useState<string | null>(null);
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 6 } }),
+  );
 
   // Active scope derived from the route: /feed/[id], /folder/[id], or /<filter>.
   const feedMatch = pathname.match(/^\/feed\/([^/]+)/);
@@ -303,8 +399,40 @@ export default function FeedSidebar({ onNavigate }: { onNavigate?: () => void })
     });
   };
 
+  const expandFolder = (folderId: string) => {
+    setCollapsedFolders((prev) => {
+      if (!prev.has(folderId)) return prev;
+      const next = new Set(prev);
+      next.delete(folderId);
+      return next;
+    });
+  };
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setDragFeedId(String(event.active.id));
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    setDragFeedId(null);
+    const { active, over } = event;
+    if (!over) return;
+    const target = over.data.current as DropTargetData | undefined;
+    if (!target || (target.folderId !== null && typeof target.folderId !== "string")) return;
+    const feed = feeds.find((f) => f.id === active.id);
+    if (!feed) return;
+    const nextFolderId = target.folderId;
+    if ((feed.folderId ?? null) === nextFolderId) return;
+    moveFeed(feed.id, nextFolderId);
+    if (nextFolderId) expandFolder(nextFolderId);
+  };
+
+  const handleDragCancel = () => {
+    setDragFeedId(null);
+  };
+
   const activeFeed = feeds.find((f) => f.id === activeFeedId) ?? null;
   const activeFolder = folders.find((f) => f.id === activeFolderId) ?? null;
+  const dragFeed = dragFeedId ? (feeds.find((f) => f.id === dragFeedId) ?? null) : null;
   const feedsByFolder = new Map<string, Feed[]>();
   const ungroupedFeeds: Feed[] = [];
   for (const f of feeds) {
@@ -317,39 +445,18 @@ export default function FeedSidebar({ onNavigate }: { onNavigate?: () => void })
     }
   }
 
-  const feedLinkCls = (active: boolean) =>
-    `mt-0.5 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition ${
-      active
-        ? "border border-white/20 bg-[#141414] font-medium text-white shadow-[inset_2px_0_0_#fafafa]"
-        : "border border-transparent text-[#8a8a8a] hover:bg-[#141414] hover:text-white"
-    }`;
-
-  const renderFeedLink = (f: Feed, nested: boolean) => {
-    const active = activeFeedId === f.id;
-    const href = query
+  const feedHref = (f: Feed) =>
+    query
       ? `/feed/${f.id}?filter=${effectiveFilter}&q=${encodeURIComponent(query)}`
       : `/feed/${f.id}?filter=${effectiveFilter}`;
-    return (
-      <Link
-        key={f.id}
-        href={href}
-        onClick={onNavigate}
-        className={`${feedLinkCls(active)} ${nested ? "ml-4" : ""}`}
-      >
-        <span
-          className={`h-1.5 w-1.5 shrink-0 rounded-full ${f.unreadCount > 0 ? "bg-white" : "bg-white/15"}`}
-        />
-        <span className="min-w-0 flex-1 truncate">{f.title}</span>
-        {f.unreadCount > 0 && (
-          <span className="shrink-0 rounded-full bg-white/10 px-2 py-0.5 font-mono text-[11px] text-[#e5e5e5]">
-            {f.unreadCount}
-          </span>
-        )}
-      </Link>
-    );
-  };
 
   return (
+    <DndContext
+      sensors={sensors}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
+    >
     <div className="flex h-full flex-col">
       <div className="p-4">
         <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#817c73]">Your reading desk</p>
@@ -468,7 +575,7 @@ export default function FeedSidebar({ onNavigate }: { onNavigate?: () => void })
             ? `/folder/${folder.id}?filter=${effectiveFilter}&q=${encodeURIComponent(query)}`
             : `/folder/${folder.id}?filter=${effectiveFilter}`;
           return (
-            <div key={folder.id} className="mt-2">
+            <DropZone key={folder.id} id={folder.id} folderId={folder.id} className="mt-2">
               <div className="flex items-center gap-0.5">
                 <button
                   onClick={() => toggleFolderCollapsed(folder.id)}
@@ -496,21 +603,49 @@ export default function FeedSidebar({ onNavigate }: { onNavigate?: () => void })
                   )}
                 </Link>
               </div>
-              {!isCollapsed && folderFeeds.map((f) => renderFeedLink(f, true))}
+              {!isCollapsed &&
+                folderFeeds.map((f) => (
+                  <FeedLink
+                    key={f.id}
+                    feed={f}
+                    href={feedHref(f)}
+                    nested
+                    active={activeFeedId === f.id}
+                    onNavigate={onNavigate}
+                  />
+                ))}
               {!isCollapsed && folderFeeds.length === 0 && (
                 <p className="ml-4 px-3 py-1.5 text-xs text-[#787774]">
-                  No feeds here yet. Open a feed to file it into this folder.
+                  No feeds here yet. Drag a feed here to file it.
                 </p>
               )}
-            </div>
+            </DropZone>
           );
         })}
-        {folders.length > 0 && ungroupedFeeds.length > 0 && (
-          <p className="mt-3 px-3 font-mono text-[10px] uppercase tracking-[0.18em] text-[#817c73]">
-            Ungrouped
-          </p>
-        )}
-        {ungroupedFeeds.map((f) => renderFeedLink(f, false))}
+        <DropZone
+          id={UNGROUPED_DROP_ID}
+          folderId={null}
+          className={folders.length > 0 ? "mt-3" : ""}
+        >
+          {folders.length > 0 && (ungroupedFeeds.length > 0 || dragFeedId) && (
+            <p className="px-3 pb-1 font-mono text-[10px] uppercase tracking-[0.18em] text-[#817c73]">
+              Ungrouped
+            </p>
+          )}
+          {ungroupedFeeds.map((f) => (
+            <FeedLink
+              key={f.id}
+              feed={f}
+              href={feedHref(f)}
+              nested={false}
+              active={activeFeedId === f.id}
+              onNavigate={onNavigate}
+            />
+          ))}
+          {folders.length > 0 && ungroupedFeeds.length === 0 && dragFeedId && (
+            <p className="px-3 py-2 text-xs text-[#787774]">Drop here to move out of the folder.</p>
+          )}
+        </DropZone>
         {feeds.length === 0 && (
           <div className="rounded-lg border border-white/10 bg-[#0a0a0a] p-4 text-[13px] text-[#787774]">
             No feeds yet. Add your first feed above to start a quiet reading list.
@@ -614,5 +749,16 @@ export default function FeedSidebar({ onNavigate }: { onNavigate?: () => void })
         </div>
       )}
     </div>
+    <DragOverlay dropAnimation={null}>
+      {dragFeed ? (
+        <div className="pointer-events-none flex w-56 items-center gap-2 rounded-lg border border-white/20 bg-[#141414] px-3 py-2 text-sm text-white shadow-xl">
+          <span
+            className={`h-1.5 w-1.5 shrink-0 rounded-full ${dragFeed.unreadCount > 0 ? "bg-white" : "bg-white/15"}`}
+          />
+          <span className="min-w-0 flex-1 truncate">{dragFeed.title}</span>
+        </div>
+      ) : null}
+    </DragOverlay>
+    </DndContext>
   );
 }
