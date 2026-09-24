@@ -63,7 +63,7 @@ function FeedLink({
       ref={setNodeRef}
       href={href}
       onClick={onNavigate}
-      className={`${feedLinkCls(active)} ${nested ? "ml-4" : ""} cursor-grab active:cursor-grabbing ${
+      className={`${feedLinkCls(active)} ${nested ? "ml-4" : ""} cursor-grab touch-manipulation active:cursor-grabbing ${
         isDragging ? "opacity-40" : ""
       }`}
       {...listeners}
