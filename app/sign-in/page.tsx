@@ -42,7 +42,7 @@ export default function SignInPage() {
   const [lastMethod, setLastMethod] = useState<SignInMethod | null>(null);
 
   useEffect(() => {
-    if (!isPending && session) router.replace("/");
+    if (!isPending && session) router.replace("/unread");
   }, [isPending, session, router]);
 
   useEffect(() => {
@@ -58,7 +58,7 @@ export default function SignInPage() {
       {
         onSuccess: () => {
           rememberMethod("passkey");
-          router.replace("/");
+          router.replace("/unread");
         },
       },
     ).then(({ error }) => {
@@ -82,7 +82,7 @@ export default function SignInPage() {
     // a returning session means this method succeeded.
     rememberMethod("github");
     const request = authClient.signIn
-      .social({ provider: "github", callbackURL: "/" })
+      .social({ provider: "github", callbackURL: "/unread" })
       .then(({ error }) => {
         if (error) throw new Error(error.message ?? "GitHub sign in failed");
       });
