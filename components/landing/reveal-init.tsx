@@ -2,36 +2,54 @@
 
 import { useEffect } from "react";
 
-/* Closes the reveal gate while the document is still parsing, so no section
-   is painted visible and then pulled back after hydration. Client-side
-   navigation never runs this script, so the effect below opens the gate
-   again. If the observer never takes over, the timeout reveals the rest so
-   a reader with broken JavaScript still gets the whole page. */
+/* The reveal gate closes before the first paint, so no section is shown and
+   then pulled back. The hiding rules live in a stylesheet the page inserts for
+   itself instead of a class on a React-rendered element, so nothing React owns
+   is touched ahead of hydration and no mismatch warning is needed. Client-side
+   navigation never parses the script, so the effect below inserts the same
+   sheet. Either way the observer takes the gate over and the sheet is removed;
+   the inline copy also drops it on a timer, so a reader whose JavaScript never
+   hydrates still gets the whole page. */
+const GATE_CSS =
+  ".landing-root .reveal{opacity:0;visibility:hidden;transform:translateY(14px)}";
+
+function insertGateSheet() {
+  // Appended last so it outranks the visible default in landing.css, which has
+  // the same specificity but ships in an earlier stylesheet.
+  const sheet = document.createElement("style");
+  sheet.dataset.revealGate = "pending";
+  sheet.textContent = GATE_CSS;
+  document.head.append(sheet);
+  return sheet;
+}
+
 const GATE = `
 (function () {
-  var root = document.documentElement;
-  root.classList.add("reveal-ready");
-  root.dataset.reveal = "pending";
+  var sheet = document.createElement("style");
+  sheet.dataset.revealGate = "pending";
+  sheet.textContent = ${JSON.stringify(GATE_CSS)};
+  document.head.append(sheet);
   setTimeout(function () {
-    if (root.dataset.reveal !== "pending") return;
-    root.querySelectorAll(".landing-root .reveal").forEach(function (node) {
-      node.classList.add("is-visible");
-    });
+    if (sheet.dataset.revealGate !== "pending") return;
+    sheet.remove();
   }, 4000);
 })();
 `;
 
 export default function RevealInit() {
   useEffect(() => {
-    const root = document.documentElement;
-    const nodes = Array.from(
-      root.querySelectorAll<HTMLElement>(".landing-root .reveal"),
-    );
+    const root = document.querySelector<HTMLElement>(".landing-root");
+    if (!root) return;
+    const nodes = Array.from(root.querySelectorAll<HTMLElement>(".reveal"));
     if (nodes.length === 0) return;
 
-    root.classList.add("reveal-ready");
-    // The observer owns the gate now, so the inline fallback stands down.
-    root.dataset.reveal = "live";
+    // A fresh load already inserted the sheet while parsing; a client-side
+    // navigation needs one now. Marking it live stands the timer down, because
+    // the observer below owns the gate from here.
+    const sheet =
+      document.querySelector<HTMLStyleElement>("style[data-reveal-gate]") ??
+      insertGateSheet();
+    sheet.dataset.revealGate = "live";
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -48,8 +66,7 @@ export default function RevealInit() {
 
     return () => {
       observer.disconnect();
-      root.removeAttribute("data-reveal");
-      root.classList.remove("reveal-ready");
+      sheet.remove();
     };
   }, []);
 

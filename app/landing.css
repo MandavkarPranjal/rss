@@ -24,8 +24,10 @@
 
 /* Scroll entry, scoped to .landing-root so it cannot collide with the
    reader's own .reveal rows, which keep the rule in globals.css.
-   Visible by default: the inline gate in reveal-init.tsx closes before the
-   first paint, so the page still reads without JavaScript. */
+   Visible by default: the gate sheet that reveal-init.tsx appends to <head>
+   turns this off before the first paint, so the page still reads without
+   JavaScript and nothing on a React-rendered element changes ahead of
+   hydration. */
 .landing-root .reveal {
   opacity: 1;
   visibility: visible;
@@ -36,23 +38,19 @@
   transition-delay: calc(var(--index, 0) * 80ms);
 }
 
-.reveal-ready .landing-root .reveal {
-  opacity: 0;
-  visibility: hidden;
-  transform: translateY(14px);
-}
-
-.reveal-ready .landing-root .reveal.is-visible {
+.landing-root .reveal.is-visible {
   opacity: 1;
   visibility: visible;
   transform: none;
 }
 
+/* The :root prefix in the next two blocks only lifts them above the gate sheet,
+   which lands later in <head> at the same specificity as the visible default. */
 @media (prefers-reduced-motion: reduce) {
   .rise {
     animation: none;
   }
-  .reveal-ready .landing-root .reveal {
+  :root .landing-root .reveal {
     opacity: 1;
     visibility: visible;
     transform: none;
@@ -62,7 +60,7 @@
 
 /* Printing never scrolls, so no section would ever be revealed. */
 @media print {
-  .reveal-ready .landing-root .reveal {
+  :root .landing-root .reveal {
     opacity: 1;
     visibility: visible;
     transform: none;
