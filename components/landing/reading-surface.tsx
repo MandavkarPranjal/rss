@@ -31,7 +31,7 @@ export default function ReadingSurface() {
               alt="An article open in Ledger, lead image above a large headline"
               width={1180}
               height={850}
-              sizes="(max-width: 1120px) 100vw, 1064px"
+              sizes="(max-width: 640px) calc(100vw - 40px), (max-width: 1120px) calc(100vw - 64px), 1056px"
               className="block w-full"
             />
           </div>

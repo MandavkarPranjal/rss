@@ -1,11 +1,6 @@
 import Link from "next/link";
 import { Newspaper } from "@phosphor-icons/react/ssr";
-
-const LINKS = [
-  { href: "/#reading", label: "Reading" },
-  { href: "/#features", label: "Features" },
-  { href: "/#self-host", label: "Self-host" },
-];
+import { SECTION_LINKS } from "./links";
 
 export default function SiteNav() {
   return (
@@ -24,7 +19,7 @@ export default function SiteNav() {
         </Link>
 
         <ul className="ml-auto hidden items-center gap-7 md:flex">
-          {LINKS.map((link) => (
+          {SECTION_LINKS.map((link) => (
             <li key={link.href}>
               <Link
                 href={link.href}

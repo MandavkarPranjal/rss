@@ -63,7 +63,7 @@ export default function Hero() {
               width={1880}
               height={930}
               priority
-              sizes="(max-width: 1024px) 100vw, 56vw"
+              sizes="(max-width: 640px) calc(100vw - 40px), (max-width: 1024px) calc(100vw - 64px), (max-width: 1536px) 50vw, 687px"
               className="block w-full"
             />
           </div>

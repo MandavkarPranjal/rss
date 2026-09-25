@@ -22,20 +22,29 @@
   }
 }
 
-/* Visible by default; the observer hides it only once it is mounted,
-   so the page still reads without JavaScript. */
-.reveal {
+/* Scroll entry, scoped to .landing-root so it cannot collide with the
+   reader's own .reveal rows, which keep the rule in globals.css.
+   Visible by default: the inline gate in reveal-init.tsx closes before the
+   first paint, so the page still reads without JavaScript. */
+.landing-root .reveal {
   opacity: 1;
+  visibility: visible;
   transform: none;
+  transition:
+    opacity 600ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 600ms cubic-bezier(0.16, 1, 0.3, 1);
+  transition-delay: calc(var(--index, 0) * 80ms);
 }
 
-.reveal-ready .reveal {
+.reveal-ready .landing-root .reveal {
   opacity: 0;
+  visibility: hidden;
   transform: translateY(14px);
 }
 
-.reveal-ready .reveal.is-visible {
+.reveal-ready .landing-root .reveal.is-visible {
   opacity: 1;
+  visibility: visible;
   transform: none;
 }
 
@@ -43,8 +52,19 @@
   .rise {
     animation: none;
   }
-  .reveal-ready .reveal {
+  .reveal-ready .landing-root .reveal {
     opacity: 1;
+    visibility: visible;
+    transform: none;
+    transition: none;
+  }
+}
+
+/* Printing never scrolls, so no section would ever be revealed. */
+@media print {
+  .reveal-ready .landing-root .reveal {
+    opacity: 1;
+    visibility: visible;
     transform: none;
   }
 }

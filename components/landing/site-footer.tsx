@@ -1,12 +1,6 @@
 import Link from "next/link";
 import { Newspaper } from "@phosphor-icons/react/ssr";
-
-const LINKS = [
-  { href: "/#reading", label: "Reading" },
-  { href: "/#features", label: "Features" },
-  { href: "/#self-host", label: "Self-host" },
-  { href: "/sign-in", label: "Sign in" },
-];
+import { FOOTER_LINKS } from "./links";
 
 export default function SiteFooter() {
   return (
@@ -22,7 +16,7 @@ export default function SiteFooter() {
         </div>
 
         <ul className="flex flex-wrap items-center gap-x-6 gap-y-3">
-          {LINKS.map((link) => (
+          {FOOTER_LINKS.map((link) => (
             <li key={link.href}>
               <Link
                 href={link.href}
