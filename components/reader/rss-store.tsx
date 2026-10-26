@@ -45,7 +45,7 @@ const EMPTY_FOLDERS: Folder[] = [];
 const EMPTY_ARTICLES_CACHE: Record<string, Article[]> = {};
 const EMPTY_ARTICLES_ERROR: Record<string, string> = {};
 const EMPTY_SEEN_IDS = new Set<string>();
-const POLL_INTERVAL_MS = 10 * 60_000;
+const POLL_INTERVAL_MS = 30 * 60_000;
 
 export function RssStoreProvider({ children }: { children: ReactNode }) {
   const { data: session, isPending } = useSession();
