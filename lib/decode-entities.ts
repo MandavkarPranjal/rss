@@ -38,11 +38,10 @@ export function decodeEntities(value: string | null | undefined): string | null 
  * Non-rendered `script`/`style` content is left alone. Returns the input
  * unchanged when no text node needs decoding.
  */
-export function decodeHtmlTextNodes(html: string): string {
-  if (!html || !html.includes("&")) return html;
-  const dom = new JSDOM(`<body>${html}</body>`);
-  const document = dom.window.document;
-  const walker = document.createTreeWalker(document.body, dom.window.NodeFilter.SHOW_TEXT);
+export function decodeDocumentTextNodes(document: Document): boolean {
+  const view = document.defaultView;
+  const filter = view?.NodeFilter ?? { SHOW_TEXT: 4 };
+  const walker = document.createTreeWalker(document.body, filter.SHOW_TEXT);
   let changed = false;
   let node = walker.nextNode();
   while (node) {
@@ -57,5 +56,16 @@ export function decodeHtmlTextNodes(html: string): string {
     }
     node = walker.nextNode();
   }
+  return changed;
+}
+
+export function decodeHtmlTextNodes(html: string): string {
+  if (!html || !html.includes("&")) return html;
+  // Skip the JSDOM parse when no actual entity is present (bare '&' or text
+  // without encoded entities).
+  if (!/&(?:#[0-9]+|#x[0-9a-f]+|[a-z][a-z0-9]*);/i.test(html)) return html;
+  const dom = new JSDOM(`<body>${html}</body>`);
+  const document = dom.window.document;
+  const changed = decodeDocumentTextNodes(document);
   return changed ? document.body.innerHTML : html;
 }

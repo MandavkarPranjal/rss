@@ -3,7 +3,7 @@ import { JSDOM } from "jsdom";
 import Parser from "rss-parser";
 import { buildMuxPlayer, configureEmbedIframe, extractJsonLdVideoEmbeds, getVideoEmbed, sanitizeIframe, sanitizeMuxPlayers } from "./article-embeds";
 import type { VideoEmbed } from "./article-embeds";
-import { decodeEntities, decodeHtmlTextNodes } from "./decode-entities";
+import { decodeEntities, decodeDocumentTextNodes } from "./decode-entities";
 import { fetchPublicText } from "./safe-fetch";
 
 const parser = new Parser({
@@ -26,7 +26,7 @@ const parser = new Parser({
 const ARTICLE_FETCH_TIMEOUT_MS = 10000;
 const ARTICLE_FETCH_MAX_BYTES = 5 * 1024 * 1024;
 const ARTICLE_FETCH_BATCH_SIZE = 4;
-const ARTICLE_FETCH_LIMIT = 20;
+const ARTICLE_FETCH_LIMIT = 10;
 const FEED_FETCH_TIMEOUT_MS = 15000;
 const FEED_FETCH_MAX_BYTES = 2 * 1024 * 1024;
 
@@ -60,7 +60,9 @@ export function normalizeFeedUrl(url: string): string {
 
 function textLength(html: string | undefined): number {
   if (!html) return 0;
-  return new JSDOM(`<body>${html}</body>`).window.document.body.textContent?.trim().length ?? 0;
+  // Cheap tag-stripping estimate: avoids a JSDOM parse per item. Good enough
+  // for the "short article" heuristic that decides full-text enrichment.
+  return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().length;
 }
 
 function makeAbsoluteUrls(html: string, baseUrl: string): string {
@@ -93,12 +95,11 @@ function makeAbsoluteUrls(html: string, baseUrl: string): string {
   return document.body.innerHTML;
 }
 
-export function sanitizeArticleHtml(html: string, baseUrl: string): string {  // Feeds frequently double-encode body text (`&amp;#8217;`), which a
-  // DOM round-trip preserves verbatim — decode text nodes first so new rows
-  // store (and render) the intended characters. Markup is untouched.
-  html = decodeHtmlTextNodes(html);
+export function sanitizeArticleHtml(html: string, baseUrl: string): string {
   const dom = new JSDOM(`<body>${html}</body>`, { url: baseUrl });
   const document = dom.window.document;
+  // Decode text nodes in the same DOM pass instead of a separate JSDOM parse.
+  decodeDocumentTextNodes(document);
 
   document.querySelectorAll<HTMLMetaElement>('meta[itemprop="contentUrl"]').forEach((metadata) => {
     const embed = getVideoEmbed(metadata.getAttribute("content") ?? "");
@@ -432,20 +433,18 @@ function collectFeedImageCandidates(
 /** Feeder `findFirstImageInHtml`: skips 1px trackers and social icons. */
 function findFirstBodyImage(html: string | undefined, baseUrl: string): string | undefined {
   if (!html || !html.includes("<img")) return undefined;
-  try {
-    const document = new JSDOM(`<body>${html}</body>`, { url: baseUrl }).window.document;
-    for (const img of Array.from(document.querySelectorAll("img"))) {
-      if (img.getAttribute("width") === "1" || img.getAttribute("height") === "1") continue;
-      const absolute = toAbsoluteHttpUrl(
-        img.getAttribute("src") ?? img.getAttribute("data-src") ?? undefined,
-        baseUrl,
-      );
-      if (!absolute) continue;
-      if (/twitter_icon|facebook_icon/i.test(absolute)) continue;
-      return absolute;
-    }
-  } catch {
-    // Best-effort: fall through to no thumbnail.
+  const imgRegex = /<img\b[^>]*>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = imgRegex.exec(html)) !== null) {
+    const tag = match[0];
+    const width = tag.match(/\bwidth\s*=\s*["']?(\d+)/i)?.[1];
+    const height = tag.match(/\bheight\s*=\s*["']?(\d+)/i)?.[1];
+    if (width === "1" || height === "1") continue;
+    const srcMatch = tag.match(/\b(?:src|data-src)\s*=\s*["']([^"']+)["']/i);
+    const absolute = toAbsoluteHttpUrl(srcMatch?.[1], baseUrl);
+    if (!absolute) continue;
+    if (/twitter_icon|facebook_icon/i.test(absolute)) continue;
+    return absolute;
   }
   return undefined;
 }
@@ -647,18 +646,13 @@ async function enrichWithFullArticles(items: ParsedItem[]): Promise<ParsedItem[]
  */
 function toPlainTextSnippet(value: string | null | undefined): string | undefined {
   if (!value) return undefined;
-  let text: string;
-  try {
-    // Keep word boundaries between block elements (`</p><p>` would otherwise
-    // concatenate to "helloworld" via textContent).
-    const spaced = value.replace(
-      /<\/?(?:h[1-6]|p|br|ul|ol|li|blockquote|section|table|tr|div)[^>]*>/gi,
-      " ",
-    );
-    text = new JSDOM(`<body>${spaced}</body>`).window.document.body.textContent ?? "";
-  } catch {
-    text = value.replace(/<(?:.|\n)*?>/gm, "");
-  }
+  // Keep word boundaries between block elements (`</p><p>` would otherwise
+  // concatenate to "helloworld"). Strip remaining tags without a JSDOM parse.
+  const spaced = value.replace(
+    /<\/?(?:h[1-6]|p|br|ul|ol|li|blockquote|section|table|tr|div)[^>]*>/gi,
+    " ",
+  );
+  let text: string = spaced.replace(/<[^>]*>/g, " ");
   text = decodeEntities(text).replace(/\s+/g, " ").trim();
   return text ? text.slice(0, 500) : undefined;
 }

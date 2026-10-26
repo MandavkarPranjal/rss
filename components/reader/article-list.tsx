@@ -50,7 +50,7 @@ export default function ArticleList({ feedId, folderId = null, filter, heading }
     };
 
     refreshArticles();
-    const interval = window.setInterval(refreshArticles, 10 * 60_000);
+    const interval = window.setInterval(refreshArticles, 30 * 60_000);
     window.addEventListener("focus", refreshArticles);
     document.addEventListener("visibilitychange", refreshArticles);
 
