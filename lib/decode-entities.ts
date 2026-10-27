@@ -27,16 +27,12 @@ export function decodeEntities(value: string | null | undefined): string | null 
 }
 
 /**
- * Decode entities in the text nodes of an HTML fragment while preserving
- * markup and attributes (`<p>It&amp;#8217;s</p>` → `<p>It’s</p>`).
+ * Decode entities in the text nodes of an already-parsed `Document`, mutating
+ * it in place. Returns `true` when at least one text node changed.
  *
- * Feed bodies are frequently double-encoded (XML-escaped *and*
- * HTML-entity-encoded), but a JSDOM round-trip only peels one layer, so the
- * stored HTML renders literals like `&#8217;` in the reader. Only text node
- * data is rewritten — elements, attributes, and structure are untouched, and
- * the serializer re-escapes the decoded text, so no new markup can appear.
- * Non-rendered `script`/`style` content is left alone. Returns the input
- * unchanged when no text node needs decoding.
+ * Only text node data is rewritten — elements, attributes, and structure are
+ * untouched, and the serializer re-escapes the decoded text, so no new markup
+ * can appear. Non-rendered `script`/`style` content is left alone.
  */
 export function decodeDocumentTextNodes(document: Document): boolean {
   const view = document.defaultView;
@@ -59,11 +55,23 @@ export function decodeDocumentTextNodes(document: Document): boolean {
   return changed;
 }
 
+/**
+ * Decode entities in the text nodes of an HTML fragment while preserving
+ * markup and attributes (`<p>It&amp;#8217;s</p>` → `<p>It’s</p>`).
+ *
+ * Feed bodies are frequently double-encoded (XML-escaped *and*
+ * HTML-entity-encoded), but a JSDOM round-trip only peels one layer, so the
+ * stored HTML renders literals like `&#8217;` in the reader. Only text node
+ * data is rewritten — elements, attributes, and structure are untouched, and
+ * the serializer re-escapes the decoded text, so no new markup can appear.
+ * Non-rendered `script`/`style` content is left alone. Returns the input
+ * unchanged when no text node needs decoding.
+ */
 export function decodeHtmlTextNodes(html: string): string {
   if (!html || !html.includes("&")) return html;
   // Skip the JSDOM parse when no actual entity is present (bare '&' or text
   // without encoded entities).
-  if (!/&(?:#[0-9]+|#x[0-9a-f]+|[a-z][a-z0-9]*);/i.test(html)) return html;
+  if (!/&(?:#[0-9]+|#x[0-9a-f]+|[a-z][a-z0-9]*);?/i.test(html)) return html;
   const dom = new JSDOM(`<body>${html}</body>`);
   const document = dom.window.document;
   const changed = decodeDocumentTextNodes(document);
