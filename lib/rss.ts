@@ -439,10 +439,9 @@ function findFirstBodyImage(html: string | undefined, baseUrl: string): string |
     const document = new JSDOM(`<body>${html}</body>`, { url: baseUrl }).window.document;
     for (const img of Array.from(document.querySelectorAll("img"))) {
       if (img.getAttribute("width") === "1" || img.getAttribute("height") === "1") continue;
-      const absolute = toAbsoluteHttpUrl(
-        img.getAttribute("src") ?? img.getAttribute("data-src") ?? undefined,
-        baseUrl,
-      );
+      const src = (img.getAttribute("src") ?? "").trim();
+      const dataSrc = (img.getAttribute("data-src") ?? "").trim();
+      const absolute = toAbsoluteHttpUrl(src || dataSrc || undefined, baseUrl);
       if (!absolute) continue;
       if (/twitter_icon|facebook_icon/i.test(absolute)) continue;
       return absolute;
