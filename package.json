@@ -34,7 +34,6 @@
     "zod": "^4.5.4"
   },
   "devDependencies": {
-    "@pruven/zeke": "^0.2.1",
     "@tailwindcss/postcss": "^4",
     "@types/bun": "^1.4.1",
     "@types/jsdom": "^30.0.0",

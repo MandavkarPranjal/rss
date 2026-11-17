@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { parseAsStringEnum, useQueryState } from "nuqs";
 import { CaretRight, Checks, Folder, FolderPlus, Plus, Trash } from "@phosphor-icons/react";
 import {
@@ -19,6 +19,7 @@ import {
 } from "@dnd-kit/core";
 import { toast } from "sonner";
 import { api } from "@/lib/rss-client";
+import { waitForFeedRefresh, type FeedRefreshResult } from "@/lib/feed-refresh-client";
 import type { Feed, RssFilter } from "@/lib/rss-types";
 import { useRssStore } from "./rss-store";
 import { useSearchQuery, useSelectedArticleId } from "./use-articles";
@@ -113,6 +114,7 @@ export default function FeedSidebar({ onNavigate }: { onNavigate?: () => void })
   const router = useRouter();
   const {
     feeds,
+    sessionUserId,
     folders,
     totalUnread,
     loadFeeds,
@@ -122,6 +124,12 @@ export default function FeedSidebar({ onNavigate }: { onNavigate?: () => void })
     setFolders,
     setFeedsError,
   } = useRssStore();
+  const refreshControllerRef = useRef<AbortController | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    refreshControllerRef.current = controller;
+    return () => controller.abort();
+  }, [sessionUserId]);
   const [query] = useSearchQuery();
   const [, setArticleId] = useSelectedArticleId();
   const [newUrl, setNewUrl] = useState("");
@@ -216,24 +224,30 @@ export default function FeedSidebar({ onNavigate }: { onNavigate?: () => void })
   };
 
   const refreshFeed = async (feedId: string) => {
+    const signal = refreshControllerRef.current?.signal;
     setLoading(true);
     const request = (async () => {
-      const result = await api(`/api/rss/feeds/${feedId}/refresh`, { method: "POST" }) as { skipped: boolean; newArticles: number };
-      if (!result.skipped) {
-        if (result.newArticles > 0) invalidateArticlesCache();
-        loadFeeds();
+      const result = await api(`/api/rss/feeds/${feedId}/refresh`, { method: "POST", signal }) as FeedRefreshResult;
+      if (result.skipReason === "in_progress") {
+        await waitForFeedRefresh(feedId, signal);
       }
+      signal?.throwIfAborted();
+      // A cron/other tab may have imported articles even when this call skipped.
+      invalidateArticlesCache();
+      loadFeeds();
       return result;
     })();
     toast.promise(request, {
       loading: "Refreshing feed…",
-      success: (result) => result.skipped ? "Feed refreshed recently or already refreshing" : "Feed refreshed",
+      success: (result) => result.skipReason === "backoff"
+        ? "Feed is waiting to retry after an error"
+        : result.skipReason === "cooldown" ? "Feed refreshed recently" : "Feed refreshed",
       error: (error) => (error instanceof Error ? error.message : "Refresh failed"),
     });
     try {
       await request;
     } catch (e) {
-      setFeedsError(e instanceof Error ? e.message : "Refresh failed");
+      if (!signal?.aborted) setFeedsError(e instanceof Error ? e.message : "Refresh failed");
     } finally {
       setLoading(false);
     }

@@ -40,7 +40,7 @@ const { refreshFeed } = await import("./feed-refresh");
 const savedFeed = {
   id: "feed-1", userId: "user-1", url: "https://8.8.8.8/feed", title: "Saved title",
   etag: '"v1"', lastModified: "Wed, 11 Nov 2026 12:00:00 GMT",
-  nextFetchAt: null, lastFetchedAt: null, fetchFailureCount: 0,
+  nextFetchAt: null, lastFetchedAt: null, lastFetchError: null, refreshLockedUntil: null, fetchFailureCount: 0,
 };
 let fetchSpy: ReturnType<typeof spyOn<typeof globalThis, "fetch">>;
 beforeEach(() => {
@@ -51,8 +51,9 @@ afterEach(() => fetchSpy?.mockRestore());
 
 test("a losing refresh lease never downloads or ingests", async () => {
   updates.push([]);
+  selects.push([{ ...savedFeed, refreshLockedUntil: new Date(Date.now() + 60_000) }]);
   fetchSpy = spyOn(globalThis, "fetch").mockRejectedValue(new Error("Must not fetch"));
-  expect((await refreshFeed(savedFeed.id))?.skipped).toBe(true);
+  expect((await refreshFeed(savedFeed.id))?.skipReason).toBe("in_progress");
   expect(fetchSpy).not.toHaveBeenCalled();
   expect(insertCount).toBe(0);
   const sql = new PgDialect().sqlToQuery(writes[0].where!).sql;
@@ -94,13 +95,39 @@ test("failed refresh releases lease and backs off without overwriting validators
   expect(writes[1].values).not.toHaveProperty("etag");
 });
 
-test("manual refresh uses the shared lease and a successful-refresh cooldown", async () => {
-  updates.push([]);
-  await refreshFeed(savedFeed.id, { force: true });
+test("a successful forced refresh prevents another forced fetch during cooldown", async () => {
+  updates.push([savedFeed], []);
+  fetchSpy = spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 304 }));
+  expect((await refreshFeed(savedFeed.id, { force: true }))?.skipped).toBe(false);
+  const completed = writes[1].values;
+  selects.push([{ ...savedFeed, ...completed }]);
+  const second = await refreshFeed(savedFeed.id, { force: true });
+  expect(second?.skipReason).toBe("cooldown");
+  expect(fetchSpy).toHaveBeenCalledTimes(1);
+  expect(writes).toHaveLength(2);
   const sql = new PgDialect().sqlToQuery(writes[0].where!).sql;
   expect(sql).toContain('"refresh_locked_until"');
   expect(sql).toContain('"last_fetched_at"');
-  expect(sql).not.toContain('"next_fetch_at"');
+  expect(sql).toContain('"last_fetch_error"');
+  expect(sql).toContain('"next_fetch_at"');
+});
+
+test("forced refresh preserves failure backoff", async () => {
+  selects[0] = [{ ...savedFeed, lastFetchError: "HTTP 503", nextFetchAt: new Date(Date.now() + 60_000) }];
+  fetchSpy = spyOn(globalThis, "fetch").mockRejectedValue(new Error("Must not fetch"));
+  expect((await refreshFeed(savedFeed.id, { force: true }))?.skipReason).toBe("backoff");
+  expect(fetchSpy).not.toHaveBeenCalled();
+  expect(writes).toHaveLength(0);
+});
+
+test("forced refresh retries a failed feed once backoff is due", async () => {
+  const due = { ...savedFeed, lastFetchError: "HTTP 503", nextFetchAt: new Date(Date.now() - 1000) };
+  selects[0] = [due];
+  updates.push([due], []);
+  fetchSpy = spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 304 }));
+  expect((await refreshFeed(savedFeed.id, { force: true }))?.skipped).toBe(false);
+  expect(fetchSpy).toHaveBeenCalledTimes(1);
+  expect(writes[1].values.lastFetchError).toBeNull();
 });
 
 test("new-article count uses actual inserts and successful imports save validators", async () => {

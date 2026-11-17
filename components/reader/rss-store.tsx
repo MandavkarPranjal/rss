@@ -71,6 +71,7 @@ export function RssStoreProvider({ children }: { children: ReactNode }) {
   // current one.
   const loadSeqRef = useRef(0);
   const lastFeedsLoadAtRef = useRef(0);
+  const feedsLoadInFlightRef = useRef(false);
 
   // Folders ride along with every feed load: folder unread counts come from
   // the same unread articles, so any refresh of one is stale without the
@@ -78,22 +79,22 @@ export function RssStoreProvider({ children }: { children: ReactNode }) {
   // independently: a failed folders call must never suppress the feed list.
   const loadFeeds = useCallback(() => {
     const userId = userIdRef.current;
-    lastFeedsLoadAtRef.current = Date.now();
+    feedsLoadInFlightRef.current = true;
     const seq = ++loadSeqRef.current;
     const stale = () => userIdRef.current !== userId || seq !== loadSeqRef.current;
-    api("/api/rss/feeds")
+    const feedsRequest = api("/api/rss/feeds")
       .then((data) => {
         // The account may have changed while the request was in flight;
         // never let the previous account's response overwrite the new list.
         if (stale()) return;
         setFeeds(data);
-        setFeedsError("");
       })
       .catch((e) => {
         if (stale()) return;
         setFeedsError(e instanceof Error ? e.message : "Failed to load feeds");
+        throw e;
       });
-    api("/api/rss/folders")
+    const foldersRequest = api("/api/rss/folders")
       .then((data) => {
         if (stale()) return;
         setFolders(data);
@@ -101,12 +102,23 @@ export function RssStoreProvider({ children }: { children: ReactNode }) {
       .catch((e) => {
         if (stale()) return;
         setFeedsError(e instanceof Error ? e.message : "Failed to load folders");
+        throw e;
       });
+    void Promise.allSettled([feedsRequest, foldersRequest]).then((results) => {
+      if (stale()) return;
+      feedsLoadInFlightRef.current = false;
+      // Failed loads must remain retryable on the next focus event.
+      const succeeded = results.every((result) => result.status === "fulfilled");
+      lastFeedsLoadAtRef.current = succeeded ? Date.now() : 0;
+      if (succeeded) setFeedsError("");
+    });
   }, []);
 
   useEffect(() => {
     if (userIdRef.current === sessionUserId) return;
     userIdRef.current = sessionUserId;
+    feedsLoadInFlightRef.current = false;
+    lastFeedsLoadAtRef.current = 0;
     setActiveUserId(sessionUserId);
     // The account changed (including sign-out) while the provider stayed
     // mounted: drop all user-scoped state so the next account never sees the
@@ -187,7 +199,7 @@ export function RssStoreProvider({ children }: { children: ReactNode }) {
     const refresh = () => {
       if (document.visibilityState === "hidden") return;
       // Focus and visibility events often fire together. Mutations still load immediately.
-      if (Date.now() - lastFeedsLoadAtRef.current < 60_000) return;
+      if (feedsLoadInFlightRef.current || Date.now() - lastFeedsLoadAtRef.current < 60_000) return;
       loadFeeds();
     };
 
