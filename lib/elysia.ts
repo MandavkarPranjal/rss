@@ -238,7 +238,7 @@ export const rssApi = new Elysia({ prefix: "/api/rss" })
       }
       const parsed = await fetchFeed(feedUrl);
       const feedId = `feed_${randomUUID()}`;
-      await db.insert(feed).values({
+      const insertFeed = db.insert(feed).values({
         id: feedId,
         userId: user.id,
         url: feedUrl,
@@ -246,8 +246,13 @@ export const rssApi = new Elysia({ prefix: "/api/rss" })
         siteUrl: parsed.siteUrl,
         description: parsed.description,
         lastFetchedAt: new Date(),
+        nextFetchAt: new Date(Date.now() + 6 * 60 * 60 * 1000),
+        etag: parsed.etag,
+        lastModified: parsed.lastModified,
       });
-      const inserted = await db.insert(article).values(parsed.items.slice(0, 100).map((item) => ({
+      // Commit validators and entries together so a failed import cannot later
+      // receive a 304 for articles that were never saved. Empty feeds are valid.
+      const insertArticles = parsed.items.length === 0 ? null : db.insert(article).values(parsed.items.map((item) => ({
         id: `art_${randomUUID()}`,
         feedId,
         userId: user.id,
@@ -260,6 +265,9 @@ export const rssApi = new Elysia({ prefix: "/api/rss" })
         imageUrl: item.imageUrl,
         publishedAt: item.publishedAt,
       }))).onConflictDoNothing({ target: [article.feedId, article.guid] }).returning({ id: article.id });
+      const inserted = insertArticles
+        ? (await db.batch([insertFeed, insertArticles]))[1]
+        : (await insertFeed, []);
       return { id: feedId, title: parsed.title, articlesImported: inserted.length };
     },
     { body: t.Object({ url: t.String({ minLength: 4, maxLength: 2000 }) }) },
@@ -310,7 +318,7 @@ export const rssApi = new Elysia({ prefix: "/api/rss" })
       .limit(1);
     if (!f) return Response.json({ error: "Feed not found" }, { status: 404 });
     const result = await refreshFeed(f.id, { force: true });
-    return { refreshed: true, newArticles: result?.newArticles ?? 0 };
+    return { refreshed: !!result && !result.skipped, skipped: result?.skipped ?? false, newArticles: result?.newArticles ?? 0 };
   })
 
   // ---- Articles ----

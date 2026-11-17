@@ -70,6 +70,7 @@ export function RssStoreProvider({ children }: { children: ReactNode }) {
   // so a stale callback can't mix an older feed/folder snapshot into the
   // current one.
   const loadSeqRef = useRef(0);
+  const lastFeedsLoadAtRef = useRef(0);
 
   // Folders ride along with every feed load: folder unread counts come from
   // the same unread articles, so any refresh of one is stale without the
@@ -77,6 +78,7 @@ export function RssStoreProvider({ children }: { children: ReactNode }) {
   // independently: a failed folders call must never suppress the feed list.
   const loadFeeds = useCallback(() => {
     const userId = userIdRef.current;
+    lastFeedsLoadAtRef.current = Date.now();
     const seq = ++loadSeqRef.current;
     const stale = () => userIdRef.current !== userId || seq !== loadSeqRef.current;
     api("/api/rss/feeds")
@@ -184,6 +186,8 @@ export function RssStoreProvider({ children }: { children: ReactNode }) {
 
     const refresh = () => {
       if (document.visibilityState === "hidden") return;
+      // Focus and visibility events often fire together. Mutations still load immediately.
+      if (Date.now() - lastFeedsLoadAtRef.current < 60_000) return;
       loadFeeds();
     };
 

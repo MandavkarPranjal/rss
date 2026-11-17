@@ -1,14 +1,13 @@
-import { eq, isNull, lte, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lte, or } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { db } from "./db";
 import { article, feed } from "./db/schema";
-import { fetchFeed } from "./rss";
+import { fetchFeed, type ParsedItem } from "./rss";
 
 async function ingestItems(
   userId: string,
   feedId: string,
-  items: Awaited<ReturnType<typeof fetchFeed>>["items"],
-  updateExistingContent = false,
+  items: ParsedItem[],
 ) {
   const values = items.slice(0, 100).map((item) => ({
     id: `art_${randomUUID()}`,
@@ -25,39 +24,15 @@ async function ingestItems(
   }));
   if (values.length === 0) return 0;
 
-  const query = db.insert(article).values(values);
-  const result = updateExistingContent
-    ? await query
-        .onConflictDoUpdate({
-          target: [article.feedId, article.guid],
-          set: {
-            content: sql`CASE
-              WHEN length(coalesce(excluded.content, '')) > length(coalesce(${article.content}, ''))
-                OR (
-                  strpos(coalesce(excluded.content, ''), '<pre') > 0
-                  AND (
-                    strpos(coalesce(${article.content}, ''), '<pre') = 0
-                    OR strpos(excluded.content, '<pre') < strpos(${article.content}, '<pre')
-                  )
-                )
-                OR (
-                  strpos(coalesce(${article.content}, ''), 'Loading the player') > 0
-                  AND strpos(coalesce(excluded.content, ''), 'content.jwplatform.com/players/') > 0
-                )
-              THEN excluded.content
-              ELSE ${article.content}
-            END`,
-            imageUrl: sql`coalesce(excluded.image_url, ${article.imageUrl})`,
-          },
-        })
-        .returning({ id: article.id })
-    : await query
-        .onConflictDoNothing({ target: [article.feedId, article.guid] })
-        .returning({ id: article.id });
+  const result = await db.insert(article).values(values)
+    .onConflictDoNothing({ target: [article.feedId, article.guid] })
+    .returning({ id: article.id });
   return result.length;
 }
 
 const REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const REFRESH_LEASE_MS = 10 * 60 * 1000;
+const MANUAL_REFRESH_COOLDOWN_MS = 60 * 1000;
 const MAX_FAILURE_BACKOFF_MS = 24 * 60 * 60 * 1000;
 
 function errorMessage(error: unknown): string {
@@ -73,9 +48,35 @@ export async function refreshFeed(feedId: string, options: { force?: boolean } =
     return { newArticles: 0, title: currentFeed.title, skipped: true };
   }
 
+  // An atomic database lease coordinates cron and manual calls across instances.
+  // A killed function leaves a lease that expires instead of a permanent lock.
+  const now = new Date();
+  const lockedUntil = new Date(now.getTime() + REFRESH_LEASE_MS);
+  const [claimed] = await db.update(feed)
+    .set({ refreshLockedUntil: lockedUntil })
+    .where(and(
+      eq(feed.id, feedId),
+      or(isNull(feed.refreshLockedUntil), lte(feed.refreshLockedUntil, now)),
+      options.force
+        ? or(isNull(feed.lastFetchedAt), lte(feed.lastFetchedAt, new Date(now.getTime() - MANUAL_REFRESH_COOLDOWN_MS)))
+        : or(isNull(feed.nextFetchAt), lte(feed.nextFetchAt, now)),
+    ))
+    .returning();
+  if (!claimed) return { newArticles: 0, title: currentFeed.title, skipped: true };
+  const ownsLease = and(eq(feed.id, feedId), eq(feed.refreshLockedUntil, lockedUntil));
+
   try {
-    const parsed = await fetchFeed(currentFeed.url);
-    const newArticles = await ingestItems(currentFeed.userId, currentFeed.id, parsed.items, true);
+    const parsed = await fetchFeed(claimed.url, {
+      etag: claimed.etag,
+      lastModified: claimed.lastModified,
+      existingGuids: async (guids) => {
+        if (guids.length === 0) return new Set<string>();
+        const rows = await db.select({ guid: article.guid }).from(article)
+          .where(and(eq(article.feedId, feedId), inArray(article.guid, guids)));
+        return new Set(rows.map(({ guid }) => guid));
+      },
+    });
+    const newArticles = parsed.notModified ? 0 : await ingestItems(claimed.userId, feedId, parsed.items);
     await db
       .update(feed)
       .set({
@@ -83,15 +84,21 @@ export async function refreshFeed(feedId: string, options: { force?: boolean } =
         lastFetchError: null,
         fetchFailureCount: 0,
         nextFetchAt: new Date(Date.now() + REFRESH_INTERVAL_MS),
-        title: parsed.title,
-        siteUrl: parsed.siteUrl,
-        description: parsed.description,
+        refreshLockedUntil: null,
+        // A 304 may omit validators; a fresh 200 replaces (or clears) them.
+        etag: parsed.notModified ? parsed.etag ?? claimed.etag : parsed.etag,
+        lastModified: parsed.notModified ? parsed.lastModified ?? claimed.lastModified : parsed.lastModified,
+        ...(!parsed.notModified ? {
+          title: parsed.title,
+          siteUrl: parsed.siteUrl,
+          description: parsed.description,
+        } : {}),
       })
-      .where(eq(feed.id, currentFeed.id));
+      .where(ownsLease);
 
-    return { newArticles, title: parsed.title, skipped: false };
+    return { newArticles, title: parsed.notModified ? claimed.title : parsed.title, skipped: false };
   } catch (error) {
-    const failureCount = currentFeed.fetchFailureCount + 1;
+    const failureCount = claimed.fetchFailureCount + 1;
     const backoff = Math.min(
       REFRESH_INTERVAL_MS * 2 ** Math.min(failureCount - 1, 5),
       MAX_FAILURE_BACKOFF_MS,
@@ -99,11 +106,12 @@ export async function refreshFeed(feedId: string, options: { force?: boolean } =
     await db
       .update(feed)
       .set({
+        refreshLockedUntil: null,
         lastFetchError: errorMessage(error),
         fetchFailureCount: failureCount,
         nextFetchAt: new Date(Date.now() + backoff),
       })
-      .where(eq(feed.id, currentFeed.id));
+      .where(ownsLease);
     throw error;
   }
 }
@@ -122,7 +130,8 @@ export async function refreshAllFeeds() {
   }
   return {
     feeds: feeds.length,
-    refreshed: results.filter((result) => result.status === "fulfilled").length,
+    refreshed: results.filter((result) => result.status === "fulfilled" && result.value && !result.value.skipped).length,
+    skipped: results.filter((result) => result.status === "fulfilled" && result.value?.skipped).length,
     failed: results.filter((result) => result.status === "rejected").length,
     newArticles: results.reduce(
       (total, result) => total + (result.status === "fulfilled" ? result.value?.newArticles ?? 0 : 0),

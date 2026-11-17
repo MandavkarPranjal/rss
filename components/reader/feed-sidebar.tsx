@@ -218,14 +218,16 @@ export default function FeedSidebar({ onNavigate }: { onNavigate?: () => void })
   const refreshFeed = async (feedId: string) => {
     setLoading(true);
     const request = (async () => {
-      await api(`/api/rss/feeds/${feedId}/refresh`, { method: "POST" });
-      invalidateArticlesCache();
-      revalidateCurrent();
-      loadFeeds();
+      const result = await api(`/api/rss/feeds/${feedId}/refresh`, { method: "POST" }) as { skipped: boolean; newArticles: number };
+      if (!result.skipped) {
+        if (result.newArticles > 0) invalidateArticlesCache();
+        loadFeeds();
+      }
+      return result;
     })();
     toast.promise(request, {
       loading: "Refreshing feed…",
-      success: "Feed refreshed",
+      success: (result) => result.skipped ? "Feed refreshed recently or already refreshing" : "Feed refreshed",
       error: (error) => (error instanceof Error ? error.message : "Refresh failed"),
     });
     try {
