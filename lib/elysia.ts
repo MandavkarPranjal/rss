@@ -309,6 +309,21 @@ export const rssApi = new Elysia({ prefix: "/api/rss" })
     { body: t.Object({ folderId: t.Union([t.String({ minLength: 1 }), t.Null()]) }) },
   )
 
+  // Lightweight polling for a refresh already running on another instance.
+  .get("/feeds/:id/refresh", async ({ request, params }) => {
+    const user = await requireUser(request);
+    const [current] = await db
+      .select({ lockedUntil: feed.refreshLockedUntil, error: feed.lastFetchError })
+      .from(feed)
+      .where(and(eq(feed.id, params.id), eq(feed.userId, user.id)))
+      .limit(1);
+    if (!current) return Response.json({ error: "Feed not found" }, { status: 404 });
+    return {
+      refreshing: !!current.lockedUntil && current.lockedUntil > new Date(),
+      error: current.error,
+    };
+  })
+
   .post("/feeds/:id/refresh", async ({ request, params }) => {
     const user = await requireUser(request);
     const [f] = await db
@@ -318,7 +333,7 @@ export const rssApi = new Elysia({ prefix: "/api/rss" })
       .limit(1);
     if (!f) return Response.json({ error: "Feed not found" }, { status: 404 });
     const result = await refreshFeed(f.id, { force: true });
-    return { refreshed: !!result && !result.skipped, skipped: result?.skipped ?? false, newArticles: result?.newArticles ?? 0 };
+    return { refreshed: !!result && !result.skipped, skipped: result?.skipped ?? false, skipReason: result?.skipReason ?? null, newArticles: result?.newArticles ?? 0 };
   })
 
   // ---- Articles ----

@@ -74,7 +74,7 @@ async function assertPublicUrl(input: URL): Promise<void> {
 async function readBody(response: Response, maxBytes: number): Promise<string> {
   const declaredLength = Number(response.headers.get("content-length") ?? 0);
   if (declaredLength > maxBytes) {
-    await response.body?.cancel();
+    await response.body?.cancel().catch(() => undefined);
     throw new RemoteFetchError("Remote response is too large", "TOO_LARGE");
   }
 
@@ -88,7 +88,7 @@ async function readBody(response: Response, maxBytes: number): Promise<string> {
       if (done) break;
       total += value.byteLength;
       if (total > maxBytes) {
-        await reader.cancel();
+        await reader.cancel().catch(() => undefined);
         throw new RemoteFetchError("Remote response is too large", "TOO_LARGE");
       }
       chunks.push(value);
@@ -144,13 +144,13 @@ export async function fetchPublicText(
     }
 
     if (response.status === 304 && options.allowNotModified) {
-      await response.body?.cancel();
+      await response.body?.cancel().catch(() => undefined);
       return { text: "", response, finalUrl: current.href };
     }
 
     if (response.status >= 300 && response.status < 400) {
       const location = response.headers.get("location");
-      await response.body?.cancel();
+      await response.body?.cancel().catch(() => undefined);
       if (!location || redirect === redirects) {
         throw new RemoteFetchError("Too many remote redirects", "HTTP_ERROR");
       }
@@ -159,7 +159,7 @@ export async function fetchPublicText(
     }
 
     if (!response.ok) {
-      await response.body?.cancel();
+      await response.body?.cancel().catch(() => undefined);
       throw new RemoteFetchError(`Remote request returned HTTP ${response.status}`, "HTTP_ERROR");
     }
 

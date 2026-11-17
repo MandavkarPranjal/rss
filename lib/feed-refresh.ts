@@ -40,13 +40,23 @@ function errorMessage(error: unknown): string {
   return message.slice(0, 500);
 }
 
+type RefreshSkipReason = "in_progress" | "cooldown" | "backoff" | "not_due";
+
+function skipReason(current: typeof feed.$inferSelect, force: boolean, now: Date): RefreshSkipReason | null {
+  if (current.refreshLockedUntil && current.refreshLockedUntil > now) return "in_progress";
+  const notDue = current.nextFetchAt && current.nextFetchAt > now;
+  if (current.lastFetchError != null && notDue) return "backoff";
+  if (!force && notDue) return "not_due";
+  if (force && current.lastFetchedAt && now.getTime() - current.lastFetchedAt.getTime() < MANUAL_REFRESH_COOLDOWN_MS) return "cooldown";
+  return null;
+}
+
 export async function refreshFeed(feedId: string, options: { force?: boolean } = {}) {
   const [currentFeed] = await db.select().from(feed).where(eq(feed.id, feedId)).limit(1);
   if (!currentFeed) return null;
 
-  if (!options.force && currentFeed.nextFetchAt && currentFeed.nextFetchAt > new Date()) {
-    return { newArticles: 0, title: currentFeed.title, skipped: true };
-  }
+  const reason = skipReason(currentFeed, !!options.force, new Date());
+  if (reason) return { newArticles: 0, title: currentFeed.title, skipped: true, skipReason: reason };
 
   // An atomic database lease coordinates cron and manual calls across instances.
   // A killed function leaves a lease that expires instead of a permanent lock.
@@ -58,11 +68,19 @@ export async function refreshFeed(feedId: string, options: { force?: boolean } =
       eq(feed.id, feedId),
       or(isNull(feed.refreshLockedUntil), lte(feed.refreshLockedUntil, now)),
       options.force
-        ? or(isNull(feed.lastFetchedAt), lte(feed.lastFetchedAt, new Date(now.getTime() - MANUAL_REFRESH_COOLDOWN_MS)))
+        ? and(
+            or(isNull(feed.lastFetchedAt), lte(feed.lastFetchedAt, new Date(now.getTime() - MANUAL_REFRESH_COOLDOWN_MS))),
+            or(isNull(feed.lastFetchError), isNull(feed.nextFetchAt), lte(feed.nextFetchAt, now)),
+          )
         : or(isNull(feed.nextFetchAt), lte(feed.nextFetchAt, now)),
     ))
     .returning();
-  if (!claimed) return { newArticles: 0, title: currentFeed.title, skipped: true };
+  if (!claimed) {
+    // The winner may already have completed; classify the current database state.
+    const [latest] = await db.select().from(feed).where(eq(feed.id, feedId)).limit(1);
+    if (!latest) return null;
+    return { newArticles: 0, title: latest.title, skipped: true, skipReason: skipReason(latest, !!options.force, new Date()) ?? "cooldown" };
+  }
   const ownsLease = and(eq(feed.id, feedId), eq(feed.refreshLockedUntil, lockedUntil));
 
   try {

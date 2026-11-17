@@ -68,6 +68,10 @@ test("redirects share one timeout and keep conditional headers", async () => {
   const result = await fetchPublicText(url, { timeoutMs: 1000, maxBytes: 100, allowNotModified: true, headers: { "If-None-Match": '"v1"' } });
   expect(result.response.status).toBe(304);
   expect(result.finalUrl).toBe("https://8.8.8.8/new-feed");
+  expect(fetchSpy).toHaveBeenCalledTimes(2);
+  for (const [, init] of fetchSpy.mock.calls) {
+    expect(new Headers(init?.headers).get("if-none-match")).toBe('"v1"');
+  }
   expect(fetchSpy.mock.calls[0][1]?.signal).toBe(fetchSpy.mock.calls[1][1]?.signal);
 });
 
