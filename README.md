@@ -26,13 +26,30 @@ APP_URL=https://your-app.vercel.app
 CRON_SECRET=the-same-value-configured-in-Vercel
 ```
 
-The workflow calls `/api/cron/refresh`, which fetches every saved feed and
-stores newly discovered entries without removing older ones. For another
+The workflow calls `/api/cron/refresh`, which fetches due feeds and
+stores newly discovered entries without removing older ones. The refresh work
+runs on Vercel; GitHub Actions only triggers the request. For another
 external scheduler, make a GET request every six hours to that endpoint with:
 
 ```text
 Authorization: Bearer <CRON_SECRET>
 ```
+
+## Deploying refresh optimizations
+
+Run `bun run db:migrate` with the deployment database configured **before**
+deploying this version. Migration `0002_charming_rumiko_fujikawa` adds feed HTTP
+validators and an expiring refresh lease. Existing feeds learn their validators
+on the next successful refresh.
+
+Refreshes use ETag/Last-Modified when publishers support them, skip stored GUIDs
+before HTML processing, and only enrich newly imported articles. Existing article
+bodies are retained rather than scraped again on each refresh. Database leases
+prevent concurrent refreshes of the same subscription; manual refreshes have a
+one-minute cooldown after a successful fetch. Leases expire after ten minutes if
+a function is terminated. Failed feeds retain the existing retry backoff.
+
+Run regression tests with `bun test`.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 

@@ -74,6 +74,7 @@ async function assertPublicUrl(input: URL): Promise<void> {
 async function readBody(response: Response, maxBytes: number): Promise<string> {
   const declaredLength = Number(response.headers.get("content-length") ?? 0);
   if (declaredLength > maxBytes) {
+    await response.body?.cancel();
     throw new RemoteFetchError("Remote response is too large", "TOO_LARGE");
   }
 
@@ -112,6 +113,7 @@ export async function fetchPublicText(
     maxBytes: number;
     headers?: HeadersInit;
     maxRedirects?: number;
+    allowNotModified?: boolean;
   },
 ): Promise<{ text: string; response: Response; finalUrl: string }> {
   let current: URL;
@@ -122,6 +124,7 @@ export async function fetchPublicText(
   }
 
   const redirects = options.maxRedirects ?? MAX_REDIRECTS;
+  const signal = AbortSignal.timeout(options.timeoutMs);
   for (let redirect = 0; redirect <= redirects; redirect += 1) {
     await assertPublicUrl(current);
     let response: Response;
@@ -129,7 +132,8 @@ export async function fetchPublicText(
       response = await fetch(current, {
         headers: options.headers,
         redirect: "manual",
-        signal: AbortSignal.timeout(options.timeoutMs),
+        signal,
+        cache: "no-store",
       });
     } catch (error) {
       if (error instanceof RemoteFetchError) throw error;
@@ -139,8 +143,14 @@ export async function fetchPublicText(
       throw new RemoteFetchError("Remote request failed", "NETWORK");
     }
 
+    if (response.status === 304 && options.allowNotModified) {
+      await response.body?.cancel();
+      return { text: "", response, finalUrl: current.href };
+    }
+
     if (response.status >= 300 && response.status < 400) {
       const location = response.headers.get("location");
+      await response.body?.cancel();
       if (!location || redirect === redirects) {
         throw new RemoteFetchError("Too many remote redirects", "HTTP_ERROR");
       }
@@ -149,6 +159,7 @@ export async function fetchPublicText(
     }
 
     if (!response.ok) {
+      await response.body?.cancel();
       throw new RemoteFetchError(`Remote request returned HTTP ${response.status}`, "HTTP_ERROR");
     }
 

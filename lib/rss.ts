@@ -35,6 +35,9 @@ export type ParsedFeed = {
   siteUrl?: string;
   description?: string;
   items: ParsedItem[];
+  etag: string | null;
+  lastModified: string | null;
+  notModified: false;
 };
 
 export type ParsedItem = {
@@ -67,10 +70,7 @@ function textLength(html: string | undefined): number {
   return decodeEntities(stripped).replace(/\s+/g, " ").trim().length;
 }
 
-function makeAbsoluteUrls(html: string, baseUrl: string): string {
-  const dom = new JSDOM(`<body>${html}</body>`, { url: baseUrl });
-  const document = dom.window.document;
-
+function makeAbsoluteUrls(document: Document, baseUrl: string): string {
   for (const element of document.querySelectorAll("*")) {
     for (const attribute of Array.from(element.attributes)) {
       if (attribute.name.toLowerCase().startsWith("on")) {
@@ -144,7 +144,9 @@ export function sanitizeArticleHtml(html: string, baseUrl: string): string {
     parent.replaceWith(iframe);
   }
   sanitizeMuxPlayers(document);
-  return makeAbsoluteUrls(document.body.innerHTML, baseUrl).trim();
+  const content = makeAbsoluteUrls(document, baseUrl).trim();
+  dom.window.close();
+  return content;
 }
 
 type FetchedArticle = {
@@ -211,7 +213,9 @@ function restoreMissingCodeBlocks(content: string, blocks: SourceCodeBlock[], ba
     else body.append(pre);
     existing.add(block.text.trim());
   }
-  return body.innerHTML;
+  const html = body.innerHTML;
+  restored.window.close();
+  return html;
 }
 
 // ---- Thumbnails (mirrors spacecowboy/Feeder: GoFeedExtensions + HtmlUtils) ----
@@ -436,15 +440,20 @@ function collectFeedImageCandidates(
 function findFirstBodyImage(html: string | undefined, baseUrl: string): string | undefined {
   if (!html || !html.includes("<img")) return undefined;
   try {
-    const document = new JSDOM(`<body>${html}</body>`, { url: baseUrl }).window.document;
-    for (const img of Array.from(document.querySelectorAll("img"))) {
-      if (img.getAttribute("width") === "1" || img.getAttribute("height") === "1") continue;
-      const src = (img.getAttribute("src") ?? "").trim();
-      const dataSrc = (img.getAttribute("data-src") ?? "").trim();
-      const absolute = toAbsoluteHttpUrl(src || dataSrc || undefined, baseUrl);
-      if (!absolute) continue;
-      if (/twitter_icon|facebook_icon/i.test(absolute)) continue;
-      return absolute;
+    const dom = new JSDOM(`<body>${html}</body>`, { url: baseUrl });
+    try {
+      const document = dom.window.document;
+      for (const img of Array.from(document.querySelectorAll("img"))) {
+        if (img.getAttribute("width") === "1" || img.getAttribute("height") === "1") continue;
+        const src = (img.getAttribute("src") ?? "").trim();
+        const dataSrc = (img.getAttribute("data-src") ?? "").trim();
+        const absolute = toAbsoluteHttpUrl(src || dataSrc || undefined, baseUrl);
+        if (!absolute) continue;
+        if (/twitter_icon|facebook_icon/i.test(absolute)) continue;
+        return absolute;
+      }
+    } finally {
+      dom.window.close();
     }
   } catch {
     // Best-effort: fall through to no thumbnail.
@@ -561,7 +570,9 @@ export function injectMissingEmbeds(content: string, embeds: VideoEmbed[], baseU
     }
     document.body.prepend(fragment);
   }
-  return document.body.innerHTML;
+  const html = document.body.innerHTML;
+  dom.window.close();
+  return html;
 }
 
 async function fetchFullArticle(link: string): Promise<FetchedArticle | undefined> {
@@ -586,24 +597,28 @@ async function fetchFullArticle(link: string): Promise<FetchedArticle | undefine
     if (contentType && !/text\/html|application\/xhtml\+xml/i.test(contentType)) return undefined;
 
     const dom = new JSDOM(html, { url: finalUrl });
-    const sourceCodeBlocks = extractSourceCodeBlocks(dom.window.document);
-    const imageUrl = extractMetadataImage(dom.window.document, finalUrl);
-    // JS-rendered players (e.g. The Verge's Vox Volume embeds) leave no
-    // iframe in the static HTML — only JSON-LD metadata. Capture those before
-    // Readability strips scripts.
-    const jsonLdEmbeds = extractJsonLdVideoEmbeds(dom.window.document);
-    const result = new Readability(dom.window.document).parse();
-    if (!result?.content || (result.textContent ?? "").trim().length < 200) {
-      return imageUrl ? { imageUrl } : undefined;
-    }
+    try {
+      const sourceCodeBlocks = extractSourceCodeBlocks(dom.window.document);
+      const imageUrl = extractMetadataImage(dom.window.document, finalUrl);
+      // JS-rendered players (e.g. The Verge's Vox Volume embeds) leave no
+      // iframe in the static HTML — only JSON-LD metadata. Capture those before
+      // Readability strips scripts.
+      const jsonLdEmbeds = extractJsonLdVideoEmbeds(dom.window.document);
+      const result = new Readability(dom.window.document).parse();
+      if (!result?.content || (result.textContent ?? "").trim().length < 200) {
+        return imageUrl ? { imageUrl } : undefined;
+      }
 
-    const contentWithCode = restoreMissingCodeBlocks(result.content, sourceCodeBlocks, finalUrl);
-    const content = injectMissingEmbeds(
-      sanitizeArticleHtml(contentWithCode, finalUrl),
-      jsonLdEmbeds,
-      finalUrl,
-    );
-    return content || imageUrl ? { content: content || undefined, imageUrl } : undefined;
+      const contentWithCode = restoreMissingCodeBlocks(result.content, sourceCodeBlocks, finalUrl);
+      const content = injectMissingEmbeds(
+        sanitizeArticleHtml(contentWithCode, finalUrl),
+        jsonLdEmbeds,
+        finalUrl,
+      );
+      return content || imageUrl ? { content: content || undefined, imageUrl } : undefined;
+    } finally {
+      dom.window.close();
+    }
   } catch {
     // Full-text retrieval is best-effort. The RSS item remains usable.
     return undefined;
@@ -657,7 +672,9 @@ function toPlainTextSnippet(value: string | null | undefined): string | undefine
       /<\/?(?:h[1-6]|p|br|ul|ol|li|blockquote|section|table|tr|div)[^>]*>/gi,
       " ",
     );
-    text = new JSDOM(`<body>${spaced}</body>`).window.document.body.textContent ?? "";
+    const dom = new JSDOM(`<body>${spaced}</body>`);
+    text = dom.window.document.body.textContent ?? "";
+    dom.window.close();
   } catch {
     text = value.replace(/<(?:.|\n)*?>/gm, "");
   }
@@ -665,22 +682,50 @@ function toPlainTextSnippet(value: string | null | undefined): string | undefine
   return text ? text.slice(0, 500) : undefined;
 }
 
-export async function fetchFeed(rawUrl: string): Promise<ParsedFeed> {
+export type FeedFetchOptions = {
+  etag?: string | null;
+  lastModified?: string | null;
+  existingGuids?: (guids: string[]) => Promise<Set<string>>;
+};
+
+type UnchangedFeed = {
+  notModified: true;
+  etag: string | null;
+  lastModified: string | null;
+};
+
+export function fetchFeed(rawUrl: string): Promise<ParsedFeed>;
+export function fetchFeed(rawUrl: string, options: FeedFetchOptions): Promise<ParsedFeed | UnchangedFeed>;
+export async function fetchFeed(rawUrl: string, options: FeedFetchOptions = {}): Promise<ParsedFeed | UnchangedFeed> {
   const url = normalizeFeedUrl(rawUrl);
   const { text, response, finalUrl } = await fetchPublicText(url, {
     timeoutMs: FEED_FETCH_TIMEOUT_MS,
+    allowNotModified: !!(options.etag || options.lastModified),
     maxBytes: FEED_FETCH_MAX_BYTES,
     headers: {
       Accept: "application/rss+xml, application/atom+xml, application/xml, text/xml, text/plain;q=0.8",
       "User-Agent": "RSS-Reader/1.0",
+      ...(options.etag ? { "If-None-Match": options.etag } : {}),
+      ...(options.lastModified ? { "If-Modified-Since": options.lastModified } : {}),
     },
   });
+  const etag = response.headers.get("etag");
+  const lastModified = response.headers.get("last-modified");
+  if (response.status === 304) return { notModified: true, etag, lastModified };
   const contentType = (response.headers.get("content-type") ?? "").toLowerCase();
   if (contentType && !/rss|atom|xml|text\/plain/i.test(contentType)) {
     throw new Error("The URL did not return an RSS or Atom feed");
   }
   const parsed = await parser.parseString(text);
-  const items: ParsedItem[] = (parsed.items ?? []).map((raw: unknown, i: number) => {
+  // Bound work before DOM parsing and skip stored entries before enrichment.
+  const rawItems = (parsed.items ?? []).slice(0, 100);
+  const guids = rawItems.map((item, i) => item.guid ?? (item as { id?: string }).id ?? item.link ?? `${finalUrl}#${i}`);
+  const existing = options.existingGuids ? await options.existingGuids(guids) : new Set<string>();
+  const seen = new Set(existing);
+  const items: ParsedItem[] = rawItems.flatMap((raw: unknown, i: number) => {
+    const guid = guids[i];
+    if (seen.has(guid)) return [];
+    seen.add(guid);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- rss-parser customFields shape is dynamic
     const item = raw as Record<string, any>;
     const link = item.link;
@@ -703,7 +748,7 @@ export async function fetchFeed(rawUrl: string): Promise<ParsedFeed> {
     const rawSnippet =
       item.contentSnippet ?? item["content:encodedSnippet"] ?? item.summary;
     return {
-      guid: item.guid ?? item.id ?? link ?? `${finalUrl}#${i}`,
+      guid,
       title: decodeEntities(item.title ?? "(untitled)"),
       link,
       snippet: toPlainTextSnippet(typeof rawSnippet === "string" ? rawSnippet : undefined),
@@ -717,6 +762,9 @@ export async function fetchFeed(rawUrl: string): Promise<ParsedFeed> {
   });
   await enrichWithFullArticles(items);
   return {
+    notModified: false,
+    etag,
+    lastModified,
     title: decodeEntities(parsed.title ?? new URL(finalUrl).hostname),
     siteUrl: parsed.link,
     description: decodeEntities(parsed.description ?? undefined) ?? undefined,
