@@ -237,17 +237,21 @@ export default function FeedSidebar({ onNavigate }: { onNavigate?: () => void })
       loadFeeds();
       return result;
     })();
-    toast.promise(request, {
-      loading: "Refreshing feed…",
-      success: (result) => result.skipReason === "backoff"
-        ? "Feed is waiting to retry after an error"
-        : result.skipReason === "cooldown" ? "Feed refreshed recently" : "Feed refreshed",
-      error: (error) => (error instanceof Error ? error.message : "Refresh failed"),
-    });
+    const toastId = toast.loading("Refreshing feed…");
     try {
-      await request;
+      const result = await request;
+      signal?.throwIfAborted();
+      toast.success(result.skipReason === "backoff"
+        ? "Feed is waiting to retry after an error"
+        : result.skipReason === "cooldown" ? "Feed refreshed recently" : "Feed refreshed", { id: toastId });
     } catch (e) {
-      if (!signal?.aborted) setFeedsError(e instanceof Error ? e.message : "Refresh failed");
+      if (signal?.aborted) {
+        toast.dismiss(toastId);
+      } else {
+        const message = e instanceof Error ? e.message : "Refresh failed";
+        toast.error(message, { id: toastId });
+        setFeedsError(message);
+      }
     } finally {
       setLoading(false);
     }
